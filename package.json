@@ -1,7 +1,7 @@
 {
   "name": "jina-mcp-tools",
-  "version": "1.0.4",
-  "description": "Jina AI Model Context Protocol (MCP) server that integrates with Jina AI APIs for web reading, search, and fact-checking",
+  "version": "1.1.0",
+  "description": "Jina AI Model Context Protocol (MCP) server that integrates with Jina AI APIs for web reading and search",
   "main": "index.js",
   "type": "module",
   "bin": {
@@ -12,9 +12,9 @@
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.8.0",
+    "@modelcontextprotocol/sdk": "^1.17.0",
     "node-fetch": "^3.3.2",
-    "zod": "^3.22.4"
+    "zod": "^3.25.76"
   },
   "keywords": [
     "jina",
@@ -22,7 +22,6 @@
     "mcp",
     "model-context-protocol",
     "search",
-    "fact-check",
     "web-reader",
     "cursor",
     "cursor-editor"
