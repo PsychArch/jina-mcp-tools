@@ -25,7 +25,7 @@ const createHeaders = (baseHeaders = {}) => {
 // Create MCP server for Jina AI tools
 const server = new McpServer({
   name: "jina-mcp-tools",
-  version: "1.1.2",
+  version: "1.1.3",
   description: "Jina AI tools for web reading and search"
 });
 
@@ -190,15 +190,15 @@ server.registerTool(
         .optional()
         .default("standard")
         .describe(`Extraction mode - how content is processed:
-• "standard" - Best for most cases (direct engine, links summary)
-• "comprehensive" - Maximum data extraction (browser engine, links + images)  
+• "standard" - Best for technical document pages (direct engine, links)
+• "comprehensive" - Maximum data extraction for media-rich pages (browser engine, links + images)  
 • "clean_content" - Remove ads, navigation, noise (CSS selectors)`),
       format: z.enum(["default", "markdown", "text", "structured"])
         .optional()
         .default("default")  
         .describe(`Output format - how content is returned:
-• "default" - Markdown focusing on main content -- best for most cases
-• "markdown" - Markdown with headers/links
+• "default" - Markdown focusing on main content -- best for technical documents
+• "markdown" - Markdown with headers
 • "text" - Plain text only
 • "structured" - Rich metadata (links + images)`),
       customTimeout: z.number().optional().describe("Override timeout in seconds for slow sites")
