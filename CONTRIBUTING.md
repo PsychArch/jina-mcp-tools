@@ -4,63 +4,73 @@
 
 ### Release Channels
 
-This project maintains two release channels:
+This project maintains two release channels using a single unified workflow:
 
-#### 1. **Alpha Channel** (Automated)
-- **Trigger**: Every push to `dev` branch
-- **Workflow**: `.github/workflows/npm-publish-alpha.yml`
-- **Versioning**: `{base-version}-alpha.{timestamp}.{commit-sha}`
-  - Example: `1.2.0-alpha.20251025120345.a1b2c3d`
+#### 1. **Alpha Channel**
+- **Trigger**: Create and push alpha version tags (e.g., `v1.2.0-alpha.0`)
+- **Workflow**: `.github/workflows/npm-publish.yml`
+- **Versioning**: Semantic versioning with `-alpha.N` suffix
+  - Example: `1.2.0-alpha.0`, `1.2.0-alpha.1`
 - **npm tag**: `alpha`
 - **Installation**: `npm install jina-mcp-tools@alpha`
-- **Policy**: Multiple alpha versions exist on npm, but the `@alpha` tag always points to the latest
 
-#### 2. **Stable Channel** (Manual)
-- **Trigger**: Push version tags (e.g., `v1.2.0`)
+#### 2. **Stable Channel**
+- **Trigger**: Create and push stable version tags (e.g., `v1.2.0`)
 - **Workflow**: `.github/workflows/npm-publish.yml`
-- **Versioning**: Semantic versioning (matches package.json)
-  - Example: `1.2.0`
+- **Versioning**: Standard semantic versioning
+  - Example: `1.2.0`, `1.2.1`
 - **npm tag**: `latest`
 - **Installation**: `npm install jina-mcp-tools`
-- **Policy**: All stable versions are kept permanently
 
 ### Publishing Process
 
 #### Publishing Alpha Releases
 ```bash
-# Simply push to dev branch - alpha release is automatic
-git add .
-git commit -m "Your changes"
-git push origin dev
-```
+# 1. Update version to alpha in package.json
+npm version 1.2.0-alpha.0 --no-git-tag-version
 
-The workflow will:
-1. Generate a timestamped alpha version
-2. Build and publish the new alpha version
-3. Update the `@alpha` tag to point to the new version
-4. Users can always install the latest with `npm install jina-mcp-tools@alpha`
+# 2. Commit the version change
+git add package.json
+git commit -m "Release v1.2.0-alpha.0"
+
+# 3. Create and push the tag
+git tag v1.2.0-alpha.0
+git push origin v1.2.0-alpha.0
+
+# The workflow will automatically detect it's an alpha and publish with --tag alpha
+```
 
 #### Publishing Stable Releases
 ```bash
 # 1. Update version in package.json
-npm version 1.2.0  # or patch/minor/major
+npm version 1.2.0 --no-git-tag-version
 
-# 2. Push the tag
+# 2. Commit the version change
+git add package.json
+git commit -m "Release v1.2.0"
+
+# 3. Create and push the tag
+git tag v1.2.0
 git push origin v1.2.0
 
-# 3. The workflow will automatically publish to npm with 'latest' tag
+# The workflow will automatically detect it's stable and publish with --tag latest
 ```
 
-### Alpha Version Management
+### How the Unified Workflow Works
 
-- **@alpha tag**: Always points to the latest alpha version
-- **Installation**: Users running `npm install jina-mcp-tools@alpha` get the latest development version
-- **Version history**: All alpha versions remain accessible for debugging if needed
-- **Automatic updates**: Each push to dev creates a new timestamped alpha
+The workflow automatically detects the release type based on the version tag:
+- Tags matching `v*.*.*-alpha.*` → Published with `--tag alpha`
+- Tags matching `v*.*.*` → Published with `--tag latest`
+
+This approach:
+- Uses a single Trusted Publisher configuration on npmjs.com
+- Requires manual version tagging (more control, less automation)
+- Clearly separates alpha and stable releases
+- Maintains standard npm distribution tag conventions
 
 ### Authentication
 
-Both workflows use **npm Trusted Publishers** (OIDC) for secure, token-free publishing:
+The workflow uses **npm Trusted Publishers** (OIDC) for secure, token-free publishing:
 - No `NPM_TOKEN` secrets needed
 - Automatic provenance attestation
 - Better supply chain security
