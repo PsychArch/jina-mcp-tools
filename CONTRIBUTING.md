@@ -13,7 +13,7 @@ This project maintains two release channels:
   - Example: `1.2.0-alpha.20251025120345.a1b2c3d`
 - **npm tag**: `alpha`
 - **Installation**: `npm install jina-mcp-tools@alpha`
-- **Policy**: Only ONE alpha version is kept on npm (previous alpha is unpublished on each new publish)
+- **Policy**: Multiple alpha versions exist on npm, but the `@alpha` tag always points to the latest
 
 #### 2. **Stable Channel** (Manual)
 - **Trigger**: Push version tags (e.g., `v1.2.0`)
@@ -36,8 +36,8 @@ git push origin dev
 
 The workflow will:
 1. Generate a timestamped alpha version
-2. Unpublish the previous alpha version
-3. Build and publish the new alpha version
+2. Build and publish the new alpha version
+3. Update the `@alpha` tag to point to the new version
 4. Users can always install the latest with `npm install jina-mcp-tools@alpha`
 
 #### Publishing Stable Releases
@@ -51,12 +51,12 @@ git push origin v1.2.0
 # 3. The workflow will automatically publish to npm with 'latest' tag
 ```
 
-### Why Keep Only One Alpha?
+### Alpha Version Management
 
-- **Cleaner npm registry**: Prevents cluttering with many alpha versions
-- **Simpler for users**: `@alpha` always gets the latest development version
-- **Automatic cleanup**: No manual maintenance needed
-- **Clear upgrade path**: Users always test against the latest dev version
+- **@alpha tag**: Always points to the latest alpha version
+- **Installation**: Users running `npm install jina-mcp-tools@alpha` get the latest development version
+- **Version history**: All alpha versions remain accessible for debugging if needed
+- **Automatic updates**: Each push to dev creates a new timestamped alpha
 
 ### Authentication
 
