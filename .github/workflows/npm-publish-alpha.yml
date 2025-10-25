@@ -38,12 +38,12 @@ jobs:
 
       - run: npm run build
 
-      - name: Unpublish previous alpha version
+      - name: Deprecate previous alpha version
         run: |
           PREV_ALPHA=$(npm view jina-mcp-tools@alpha version 2>/dev/null || echo "none")
           if [ "$PREV_ALPHA" != "none" ]; then
-            echo "Unpublishing previous alpha version: $PREV_ALPHA"
-            npm unpublish jina-mcp-tools@$PREV_ALPHA || true
+            echo "Deprecating previous alpha version: $PREV_ALPHA"
+            npm deprecate jina-mcp-tools@$PREV_ALPHA "Superseded by newer alpha release" || true
           else
             echo "No previous alpha version found"
           fi
