@@ -1,6 +1,6 @@
 {
   "name": "jina-mcp-tools",
-  "version": "1.2.0",
+  "version": "1.2.0-alpha.0",
   "description": "Jina AI Model Context Protocol (MCP) server that integrates with Jina AI APIs for web reading and search",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
