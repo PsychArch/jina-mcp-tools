@@ -1,0 +1,58 @@
+# Publish alpha releases on every push to dev branch
+name: Publish Alpha
+
+on:
+  push:
+    branches:
+      - dev
+  workflow_dispatch:
+
+jobs:
+  publish-alpha:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write  # Required for npm provenance and OIDC authentication
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          registry-url: https://registry.npmjs.org/
+
+      - run: npm install -g npm@latest
+
+      - run: npm ci
+
+      # Generate alpha version with timestamp
+      - name: Set alpha version
+        id: version
+        run: |
+          BASE_VERSION=$(node -p "require('./package.json').version.split('-')[0]")
+          TIMESTAMP=$(date +%Y%m%d%H%M%S)
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          ALPHA_VERSION="${BASE_VERSION}-alpha.${TIMESTAMP}.${SHORT_SHA}"
+          echo "version=$ALPHA_VERSION" >> $GITHUB_OUTPUT
+          npm version $ALPHA_VERSION --no-git-tag-version
+
+      - run: npm run build
+
+      - name: Unpublish previous alpha version
+        run: |
+          PREV_ALPHA=$(npm view jina-mcp-tools@alpha version 2>/dev/null || echo "none")
+          if [ "$PREV_ALPHA" != "none" ]; then
+            echo "Unpublishing previous alpha version: $PREV_ALPHA"
+            npm unpublish jina-mcp-tools@$PREV_ALPHA || true
+          else
+            echo "No previous alpha version found"
+          fi
+        continue-on-error: true
+
+      - name: Publish to npm with alpha tag
+        run: npm publish --provenance --access public --tag alpha
+
+      - name: Comment on commit
+        run: |
+          echo "✅ Published jina-mcp-tools@${{ steps.version.outputs.version }} to npm with tag 'alpha'"
+          echo "Install with: npm install jina-mcp-tools@alpha"
