@@ -7,7 +7,7 @@ A Model Context Protocol (MCP) server that integrates with [Jina AI Search Found
 This MCP server provides access to the following Jina AI APIs:
 
 - **Web Reader** - Extract content from web pages using r.jina.ai
-- **Web Search** - Search the web using s.jina.ai
+- **Web Search** - Search the web using s.jina.ai or svip.jina.ai (configurable via `--search-endpoint`)
 
 ## Prerequisites
 
@@ -17,12 +17,21 @@ This MCP server provides access to the following Jina AI APIs:
 
 ## MCP Server
 
+### Using stdio Transport (Default)
+
+For local integrations spawned by another process (e.g., Claude Desktop, VS Code, Cursor):
+
 ```json
 {
   "mcpServers": {
     "jina-mcp-tools": {
       "command": "npx",
-      "args": ["jina-mcp-tools"],
+      "args": [
+        "jina-mcp-tools",
+        "--transport", "stdio",
+        "--tokens-per-page", "15000",
+        "--search-endpoint", "standard"
+      ],
       "env": {
         "JINA_API_KEY": "your_jina_api_key_here_optional"
       }
@@ -31,57 +40,58 @@ This MCP server provides access to the following Jina AI APIs:
 }
 ```
 
+### Using HTTP Transport
+
+For remote server deployments accessible via HTTP:
+
+**Start the server:**
+```bash
+# With API key
+JINA_API_KEY=your_api_key npx jina-mcp-tools --transport http --port 3000
+
+# Without API key (reader tool only)
+npx jina-mcp-tools --transport http --port 3000
+```
+
+**Connect from MCP clients:**
+- MCP Inspector: `npx @modelcontextprotocol/inspector` → `http://localhost:3000/mcp`
+- Claude Code: `claude mcp add --transport http jina-tools http://localhost:3000/mcp`
+- VS Code: `code --add-mcp '{"name":"jina-tools","type":"http","url":"http://localhost:3000/mcp"}'`
+
+**CLI Options:**
+- `--transport` - Transport type: `stdio` or `http` (default: stdio)
+- `--port` - HTTP server port (default: 3000, only for HTTP transport)
+- `--tokens-per-page` - Tokens per page for pagination (default: 15000)
+- `--search-endpoint` - Search endpoint to use: `standard` (s.jina.ai) or `vip` (svip.jina.ai) (default: standard)
+
 ## Available Tools
 
 ### jina_reader
 
-Extract content from a webpage in a format optimized for LLMs. Supports GitHub file URLs with direct access.
-
-```json
-{
-  "name": "jina_reader",
-  "arguments": {
-    "url": "https://example.com",
-    "mode": "standard",
-    "format": "default",
-    "customTimeout": 10
-  }
-}
-```
-
-**Extraction Modes:**
-- `"standard"` - Balanced speed and quality (direct engine, links summary)
-- `"comprehensive"` - Maximum data extraction (browser engine, links + images)
-- `"clean_content"` - Remove ads, navigation, noise (CSS selectors)
-
-**Output Formats:**
-- `"default"` - Jina API's native markdown format
-- `"markdown"` - Structured markdown with headers and links
-- `"text"` - Plain text only, fastest processing
-- `"structured"` - Rich metadata with links and images
-
-**GitHub Support:**
-GitHub file URLs (e.g., `github.com/owner/repo/blob/main/file.js`) are automatically detected and converted to raw content URLs for direct access, bypassing Jina reader for optimal performance.
-
-### jina_search
-
-Search the web for information. Returns partial content; use jina_reader for full page content.
-
-```json
-{
-  "name": "jina_search",
-  "arguments": {
-    "query": "How does quantum computing work?",
-    "count": 5,
-    "siteFilter": "github.com"
-  }
-}
-```
+Extract and read web page content.
 
 **Parameters:**
-- `query` - Search query string
-- `count` - Number of search results (default: 5)
-- `siteFilter` - Limit search to specific domain (e.g., "github.com")
+- `url` - URL to read (required)
+- `page` - Page number for paginated content (default: 1)
+- `customTimeout` - Timeout override in seconds (optional)
+
+**Features:**
+- Automatic pagination for large documents
+- LRU cache (50 URLs) for instant subsequent page requests
+- GitHub file URLs automatically converted to raw content URLs
+
+### jina_search / jina_search_vip
+
+Search the web. Returns partial content; use `jina_reader` for full content. Requires API key.
+
+Tool registered depends on `--search-endpoint`:
+- `jina_search` → `standard` (s.jina.ai, default)
+- `jina_search_vip` → `vip` (svip.jina.ai)
+
+**Parameters:**
+- `query` - Search query (required)
+- `count` - Number of results (default: 5)
+- `siteFilter` - Limit to specific domain (e.g., "github.com")
 
 
 ## License

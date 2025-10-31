@@ -1,33 +1,49 @@
-# This workflow will run tests using node and then publish a package to GitHub Packages when a release is created
+# Publish releases when version tags are created
+# Supports both stable releases (v1.2.0) and alpha releases (v1.2.0-alpha.0)
 # For more information see: https://docs.github.com/en/actions/publishing-packages/publishing-nodejs-packages
 
-name: Node.js Package
+name: Publish Release
 
 on:
-  release:
-    types: [created]
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'              # Stable: v1.2.3
+      - 'v[0-9]+.[0-9]+.[0-9]+-alpha.[0-9]+' # Alpha: v1.2.0-alpha.0
   workflow_dispatch:
 
 jobs:
-  build:
+  publish-npm:
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write  # Required for npm provenance and OIDC authentication
+      contents: read
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
+          registry-url: https://registry.npmjs.org/
+
+      - run: npm install -g npm@latest
+
       - run: npm ci
 
-  publish-npm:
-    needs: build
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          registry-url: https://registry.npmjs.org/
-      - run: npm ci
-      - run: npm publish
-        env:
-          NODE_AUTH_TOKEN: ${{secrets.NPM_TOKEN}}
+      - run: npm run build
+
+      - name: Detect release type and publish
+        run: |
+          # Get the tag from the ref
+          TAG=${GITHUB_REF#refs/tags/}
+          echo "Processing tag: $TAG"
+
+          # Determine if this is an alpha release
+          if [[ "$TAG" =~ -alpha\.[0-9]+$ ]]; then
+            echo "🔷 Detected alpha release"
+            echo "Publishing with --tag alpha"
+            npm publish --provenance --access public --tag alpha
+          else
+            echo "✅ Detected stable release"
+            echo "Publishing with --tag latest"
+            npm publish --provenance --access public
+          fi
