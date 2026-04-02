@@ -47,9 +47,9 @@ For remote server deployments accessible via HTTP:
 **Start the server:**
 ```bash
 # With API key
-JINA_API_KEY=your_api_key npx jina-mcp-tools --transport http --port 3000
+JINA_API_KEY=your_api_key npx jina-mcp-tools --transport http --host 127.0.0.1 --port 3000
 
-# Without API key (reader tool only)
+# Without API key (reader tool only, binds to 127.0.0.1 by default)
 npx jina-mcp-tools --transport http --port 3000
 ```
 
@@ -60,9 +60,26 @@ npx jina-mcp-tools --transport http --port 3000
 
 **CLI Options:**
 - `--transport` - Transport type: `stdio` or `http` (default: stdio)
+- `--host` - Host/interface to bind in HTTP mode (default: `127.0.0.1`)
 - `--port` - HTTP server port (default: 3000, only for HTTP transport)
 - `--tokens-per-page` - Tokens per page for pagination (default: 15000)
 - `--search-endpoint` - Search endpoint to use: `standard` (s.jina.ai) or `vip` (svip.jina.ai) (default: standard)
+- `--cache-size` - Reader cache size in URLs (default: 50)
+- `--help` - Show the built-in CLI help
+
+### Proxy Environment Variables
+
+Outbound HTTP requests now honor standard proxy environment variables. This applies to `jina_reader`, `jina_search`, and `jina_search_vip`.
+
+- Supported proxy variables: `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`
+- Lowercase variants are also supported: `http_proxy`, `https_proxy`, `all_proxy`
+- Exclusions are respected via `NO_PROXY` / `no_proxy`
+
+Example:
+
+```bash
+HTTPS_PROXY=http://proxy.internal:8080 npx jina-mcp-tools --transport stdio
+```
 
 ## Available Tools
 

@@ -1,7 +1,7 @@
 import { z } from "zod";
 import fetch from "node-fetch";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { createHeaders } from "./utils.js";
+import { createHeaders, getFetchAgent } from "./utils.js";
 import { JinaVipSearchResponse } from "./types.js";
 
 export function registerSearchVipTool(server: McpServer): void {
@@ -35,6 +35,7 @@ export function registerSearchVipTool(server: McpServer): void {
         const headers = createHeaders(baseHeaders);
 
         const response = await fetch(`https://svip.jina.ai/?q=${encodedQuery}`, {
+          agent: getFetchAgent(),
           method: "GET",
           headers
         });

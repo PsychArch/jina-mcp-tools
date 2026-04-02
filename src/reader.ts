@@ -6,6 +6,7 @@ import { contentCache } from "./cache.js";
 import { paginateContent, getPage } from "./pagination.js";
 import {
   createHeaders,
+  getFetchAgent,
   handleGitHubUrl,
   buildJinaHeaders
 } from "./utils.js";
@@ -60,7 +61,9 @@ export function registerReaderTool(
         let content: string;
 
         if (shouldBypassJina) {
-          const directResponse = await fetch(actualUrl);
+          const directResponse = await fetch(actualUrl, {
+            agent: getFetchAgent()
+          });
 
           if (!directResponse.ok) {
             throw new Error(`GitHub API error (${directResponse.status}): ${directResponse.statusText}`);
@@ -77,6 +80,7 @@ export function registerReaderTool(
           const headers = createHeaders(jinaHeaders);
 
           const response = await fetch("https://r.jina.ai/", {
+            agent: getFetchAgent(),
             method: "POST",
             headers,
             body: JSON.stringify({ url: actualUrl })
