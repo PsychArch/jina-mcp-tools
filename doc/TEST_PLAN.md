@@ -22,6 +22,8 @@
 3. **Large page (50-200k tokens)** - Should paginate into 4-14 pages
 4. **Massive page (> 200k tokens)** - Should paginate into 14+ pages
 5. **Non-English content** - Test Chinese/international docs
+6. **Markdown negotiation success** - Allowlisted host returns markdown directly
+7. **Markdown negotiation fallback** - Non-allowlisted or failed direct response falls back to Jina cleanly
 
 ## Expected Behavior
 
@@ -30,6 +32,8 @@
 - ✅ Cached pages for instant retrieval
 - ✅ Clear pagination metadata (Page X of Y, token count)
 - ✅ Next page hints in output
+- ✅ Allowlisted markdown-capable hosts prefer direct `Accept: text/markdown` responses
+- ✅ Failed or empty allowlisted direct responses fall back to Jina output
 
 ## Success Criteria
 
@@ -37,3 +41,15 @@
 - Token counts within configured limits per page
 - Cache hits on subsequent page requests
 - Clean markdown output maintained
+
+## Markdown Negotiation Smoke Tests
+
+| URL | Expected Path |
+|-----|---------------|
+| https://developers.cloudflare.com/agents/getting-started/build-a-chat-agent/ | Direct markdown via `Accept: text/markdown` |
+| https://blog.cloudflare.com/markdown-for-agents/ | Direct markdown via `Accept: text/markdown` |
+| https://developer.wordpress.org/reference/functions/get_permalink/ | Direct markdown via `Accept: text/markdown` |
+| https://vercel.com/docs | Direct markdown via `Accept: text/markdown` |
+| https://vercel.com/blog/self-driving-infrastructure | Direct markdown via `Accept: text/markdown` |
+| https://mintlify.com/docs | Direct markdown via `Accept: text/markdown` |
+| https://nextjs.org/docs | Skip direct probe and use Jina fallback |

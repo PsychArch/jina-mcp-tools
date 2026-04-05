@@ -1,5 +1,6 @@
 import { GitHubUrlResult } from './types.js';
 import { ProxyAgent } from 'proxy-agent';
+import { markdownNegotiationRules } from './markdown_allowlist.js';
 
 const fetchAgent = new ProxyAgent();
 
@@ -20,6 +21,32 @@ export const createHeaders = (baseHeaders: Record<string, string> = {}): Record<
 
 export const getFetchAgent = (): ProxyAgent => {
   return fetchAgent;
+};
+
+export const shouldTryMarkdownNegotiation = (url: string): boolean => {
+  let parsedUrl: URL;
+
+  try {
+    parsedUrl = new URL(url);
+  } catch {
+    return false;
+  }
+
+  const normalizedPath = parsedUrl.pathname.replace(/\/+$/, '') || '/';
+
+  return markdownNegotiationRules.some((rule) => {
+    if (parsedUrl.hostname !== rule.host) {
+      return false;
+    }
+
+    if (!rule.pathPrefixes) {
+      return true;
+    }
+
+    return rule.pathPrefixes.some((prefix) => (
+      normalizedPath === prefix || normalizedPath.startsWith(`${prefix}/`)
+    ));
+  });
 };
 
 export const handleGitHubUrl = (url: string): GitHubUrlResult => {

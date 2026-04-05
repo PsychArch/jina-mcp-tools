@@ -8,9 +8,47 @@ import {
   createHeaders,
   getFetchAgent,
   handleGitHubUrl,
-  buildJinaHeaders
+  buildJinaHeaders,
+  shouldTryMarkdownNegotiation
 } from "./utils.js";
 import { JinaReaderResponse } from "./types.js";
+
+async function fetchMarkdownNegotiatedContent(
+  url: string,
+  customTimeout?: number
+): Promise<string | null> {
+  const controller = new AbortController();
+  const timeoutId = customTimeout
+    ? setTimeout(() => controller.abort(), customTimeout * 1000)
+    : undefined;
+
+  try {
+    const response = await fetch(url, {
+      agent: getFetchAgent(),
+      headers: {
+        Accept: "text/markdown"
+      },
+      signal: controller.signal
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    const content = await response.text();
+    if (!content.trim()) {
+      return null;
+    }
+
+    return content;
+  } catch {
+    return null;
+  } finally {
+    if (timeoutId) {
+      clearTimeout(timeoutId);
+    }
+  }
+}
 
 export function registerReaderTool(
   server: McpServer,
@@ -71,29 +109,37 @@ export function registerReaderTool(
 
           content = await directResponse.text();
         } else {
-          const jinaHeaders = buildJinaHeaders(isGitHub);
+          const markdownContent = shouldTryMarkdownNegotiation(originalUrl)
+            ? await fetchMarkdownNegotiatedContent(originalUrl, customTimeout)
+            : null;
 
-          if (customTimeout) {
-            jinaHeaders["X-Timeout"] = customTimeout.toString();
+          if (markdownContent) {
+            content = markdownContent;
+          } else {
+            const jinaHeaders = buildJinaHeaders(isGitHub);
+
+            if (customTimeout) {
+              jinaHeaders["X-Timeout"] = customTimeout.toString();
+            }
+
+            const headers = createHeaders(jinaHeaders);
+
+            const response = await fetch("https://r.jina.ai/", {
+              agent: getFetchAgent(),
+              method: "POST",
+              headers,
+              body: JSON.stringify({ url: actualUrl })
+            });
+
+            if (!response.ok) {
+              const errorText = await response.text();
+              throw new Error(`Jina Reader API error (${response.status}): ${errorText}`);
+            }
+
+            const data = await response.json() as JinaReaderResponse;
+            const responseData = data.data || {};
+            content = responseData.content || "No content extracted";
           }
-
-          const headers = createHeaders(jinaHeaders);
-
-          const response = await fetch("https://r.jina.ai/", {
-            agent: getFetchAgent(),
-            method: "POST",
-            headers,
-            body: JSON.stringify({ url: actualUrl })
-          });
-
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`Jina Reader API error (${response.status}): ${errorText}`);
-          }
-
-          const data = await response.json() as JinaReaderResponse;
-          const responseData = data.data || {};
-          content = responseData.content || "No content extracted";
         }
 
         const pages = paginateContent(content, tokensPerPage);

@@ -96,6 +96,7 @@ Extract and read web page content.
 - Automatic pagination for large documents
 - LRU cache (50 URLs) for instant subsequent page requests
 - GitHub file URLs automatically converted to raw content URLs
+- Tries `Accept: text/markdown` first for a maintained allowlist of markdown-capable docs/blog hosts, then falls back to `r.jina.ai` on fetch failure or empty responses
 
 ### jina_search / jina_search_vip
 
