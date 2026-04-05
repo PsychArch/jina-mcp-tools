@@ -34,6 +34,19 @@ jobs:
 
       - run: pnpm build
 
+      - name: Print publish diagnostics
+        run: |
+          echo "GITHUB_EVENT_NAME=$GITHUB_EVENT_NAME"
+          echo "GITHUB_REF=$GITHUB_REF"
+          echo "GITHUB_REF_NAME=$GITHUB_REF_NAME"
+          echo "GITHUB_REPOSITORY=$GITHUB_REPOSITORY"
+          echo "GITHUB_WORKFLOW=$GITHUB_WORKFLOW"
+          echo "npm version: $(npm --version)"
+          echo "node version: $(node --version)"
+          echo "pnpm version: $(pnpm --version)"
+          echo "npm registry: $(npm config get registry)"
+          node -e 'const p=require("./package.json"); console.log(JSON.stringify({name:p.name, version:p.version, repository:p.repository, publishConfig:p.publishConfig || null, bin:p.bin}, null, 2));'
+
       - name: Detect release type and publish
         run: |
           # Get the tag from the ref
@@ -44,9 +57,9 @@ jobs:
           if [[ "$TAG" =~ -alpha\.[0-9]+$ ]]; then
             echo "🔷 Detected alpha release"
             echo "Publishing with --tag alpha"
-            npm publish --provenance --access public --tag alpha
+            npm publish --provenance --access public --tag alpha --loglevel verbose
           else
             echo "✅ Detected stable release"
             echo "Publishing with --tag latest"
-            npm publish --provenance --access public
+            npm publish --provenance --access public --loglevel verbose
           fi
