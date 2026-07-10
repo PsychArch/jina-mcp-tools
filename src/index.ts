@@ -1,19 +1,21 @@
 #!/usr/bin/env node
 
+import { createRequire } from "node:module";
+import { pathToFileURL } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import express from "express";
-import { getJinaApiKey } from "./utils.js";
+import express, { type Express, type Request, type Response } from "express";
+import { initializeCache } from "./cache.js";
 import { registerReaderTool } from "./reader.js";
 import { registerSearchTool } from "./search.js";
 import { registerSearchVipTool } from "./search_vip.js";
-import { initializeCache } from "./cache.js";
+import { getJinaApiKey } from "./utils.js";
 
 type SearchEndpoint = "standard" | "vip";
 type TransportType = "stdio" | "http";
 
-interface ServerConfig {
+export interface ServerConfig {
   cacheSize: number;
   host: string;
   port: number;
@@ -22,7 +24,22 @@ interface ServerConfig {
   transport: TransportType;
 }
 
-const DEFAULT_CONFIG: ServerConfig = {
+interface McpServerOptions {
+  apiKey?: string | null;
+  searchEndpoint: SearchEndpoint;
+  tokensPerPage: number;
+}
+
+interface HttpAppOptions {
+  allowedOrigins?: readonly string[];
+  authToken?: string | null;
+}
+
+const require = createRequire(import.meta.url);
+const packageJson = require("../package.json") as { version: string };
+const SERVER_VERSION = packageJson.version;
+
+export const DEFAULT_CONFIG: ServerConfig = {
   cacheSize: 50,
   host: "127.0.0.1",
   port: 3000,
@@ -31,7 +48,7 @@ const DEFAULT_CONFIG: ServerConfig = {
   transport: "stdio"
 };
 
-const USAGE = `Usage: jina-mcp-tools [options]
+export const USAGE = `Usage: jina-mcp-tools [options]
 
 Options:
   --transport <stdio|http>         Transport type (default: stdio)
@@ -42,15 +59,24 @@ Options:
   --cache-size <positive-int>      Reader cache size (default: 50)
   -h, --help                       Show this help message`;
 
-const formatHostForUrl = (hostValue: string): string => {
-  return hostValue.includes(':') && !hostValue.startsWith('[') ? `[${hostValue}]` : hostValue;
+export class CliUsageError extends Error {
+  readonly exitCode = 1;
+}
+
+export class CliHelpRequested extends Error {
+  readonly exitCode = 0;
+
+  constructor() {
+    super(USAGE);
+  }
+}
+
+export const formatHostForUrl = (hostValue: string): string => {
+  return hostValue.includes(":") && !hostValue.startsWith("[") ? `[${hostValue}]` : hostValue;
 };
 
 const failCli = (message: string): never => {
-  console.error(message);
-  console.error("");
-  console.error(USAGE);
-  process.exit(1);
+  throw new CliUsageError(message);
 };
 
 const getOptionValue = (args: string[], index: number, option: string): string => {
@@ -88,17 +114,20 @@ const parsePositiveInteger = (
   return parsed;
 };
 
-const parseArgs = (args: string[]): ServerConfig => {
+export const parseArgs = (args: string[]): ServerConfig => {
   const config: ServerConfig = { ...DEFAULT_CONFIG };
 
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
 
+    if (arg === undefined) {
+      continue;
+    }
+
     switch (arg) {
       case "-h":
       case "--help":
-        console.error(USAGE);
-        process.exit(0);
+        throw new CliHelpRequested();
       case "--tokens-per-page":
         config.tokensPerPage = parsePositiveInteger(
           getOptionValue(args, i, arg),
@@ -116,11 +145,11 @@ const parseArgs = (args: string[]): ServerConfig => {
         break;
       }
       case "--transport": {
-        const transport = getOptionValue(args, i, arg).toLowerCase();
-        if (transport !== "stdio" && transport !== "http") {
-          failCli(`Invalid value for ${arg}: ${transport}. Expected stdio or http.`);
+        const selectedTransport = getOptionValue(args, i, arg).toLowerCase();
+        if (selectedTransport !== "stdio" && selectedTransport !== "http") {
+          failCli(`Invalid value for ${arg}: ${selectedTransport}. Expected stdio or http.`);
         }
-        config.transport = transport as TransportType;
+        config.transport = selectedTransport as TransportType;
         i++;
         break;
       }
@@ -149,123 +178,241 @@ const parseArgs = (args: string[]): ServerConfig => {
   return config;
 };
 
-const {
-  cacheSize,
-  host,
-  port,
+export const formatCliError = (error: Error): string => {
+  return `${error.message}\n\n${USAGE}`;
+};
+
+export function createMcpServer({
+  apiKey = getJinaApiKey(),
   searchEndpoint,
-  tokensPerPage,
-  transport
-} = parseArgs(process.argv.slice(2));
+  tokensPerPage
+}: McpServerOptions): McpServer {
+  const server = new McpServer({
+    name: "jina-mcp-tools",
+    version: SERVER_VERSION,
+    description: "Jina AI tools for web reading and search"
+  });
 
-// Initialize cache with configured size
-initializeCache(cacheSize);
-
-// Create MCP server for Jina AI tools
-const server = new McpServer({
-  name: "jina-mcp-tools",
-  version: "1.2.1",
-  description: "Jina AI tools for web reading and search"
-});
-
-// Get API key to determine which tools to register
-const apiKey = getJinaApiKey();
-
-// Register tools based on API key availability
-if (apiKey) {
-  // API key available - register all tools
   registerReaderTool(server, tokensPerPage);
 
-  // Register search tool based on selected endpoint
-  if (searchEndpoint === 'vip') {
-    registerSearchVipTool(server);
-  } else {
-    registerSearchTool(server);
+  if (apiKey) {
+    if (searchEndpoint === "vip") {
+      registerSearchVipTool(server);
+    } else {
+      registerSearchTool(server);
+    }
   }
-} else {
-  // No API key - register only reader tool (works without API key)
-  registerReaderTool(server, tokensPerPage);
+
+  return server;
 }
 
-// Main function to start the server
-async function main(): Promise<void> {
+const parseAllowedOrigins = (): string[] => {
+  const value = process.env.JINA_MCP_ALLOWED_ORIGINS;
+  if (!value) {
+    return [];
+  }
+
+  return value
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+};
+
+const isLocalhostOrigin = (origin: string): boolean => {
   try {
-    if (apiKey) {
-      console.error(`Jina AI API key found with length ${apiKey.length}`);
-      if (apiKey.length < 10) {
-        console.warn("Warning: JINA_API_KEY seems too short. Please verify your API key.");
+    const parsed = new URL(origin);
+    return ["localhost", "127.0.0.1", "::1"].includes(parsed.hostname);
+  } catch {
+    return false;
+  }
+};
+
+const isOriginAllowed = (
+  origin: string | undefined,
+  allowedOrigins: readonly string[]
+): boolean => {
+  if (!origin) {
+    return true;
+  }
+
+  return allowedOrigins.includes("*")
+    || allowedOrigins.includes(origin)
+    || isLocalhostOrigin(origin);
+};
+
+const hasValidBearerToken = (
+  req: Request,
+  authToken: string | null | undefined
+): boolean => {
+  if (!authToken) {
+    return true;
+  }
+
+  return req.header("authorization") === `Bearer ${authToken}`;
+};
+
+const rejectJson = (res: Response, status: number, message: string): void => {
+  res.status(status).json({
+    jsonrpc: "2.0",
+    error: {
+      code: -32603,
+      message
+    },
+    id: null
+  });
+};
+
+export function createHttpApp(
+  serverFactory: () => McpServer,
+  options: HttpAppOptions = {}
+): Express {
+  const app = express();
+  const allowedOrigins = options.allowedOrigins ?? parseAllowedOrigins();
+  const authToken = options.authToken ?? process.env.JINA_MCP_HTTP_AUTH_TOKEN ?? null;
+
+  app.use(express.json());
+
+  app.use("/mcp", (req, res, next) => {
+    const origin = req.header("origin");
+
+    if (!isOriginAllowed(origin, allowedOrigins)) {
+      rejectJson(res, 403, "Origin is not allowed");
+      return;
+    }
+
+    if (origin) {
+      res.setHeader("Access-Control-Allow-Origin", origin);
+      res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
+      res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type, Accept");
+      res.vary("Origin");
+    }
+
+    if (req.method === "OPTIONS") {
+      res.sendStatus(204);
+      return;
+    }
+
+    if (!hasValidBearerToken(req, authToken)) {
+      rejectJson(res, 401, "Unauthorized");
+      return;
+    }
+
+    next();
+  });
+
+  app.post("/mcp", async (req, res) => {
+    try {
+      const httpTransport = new StreamableHTTPServerTransport({
+        sessionIdGenerator: undefined,
+        enableJsonResponse: true
+      });
+
+      res.on("close", () => {
+        void httpTransport.close();
+      });
+
+      const requestServer = serverFactory();
+      await requestServer.connect(httpTransport);
+      await httpTransport.handleRequest(req, res, req.body);
+    } catch (error) {
+      console.error("Error handling MCP request:", error);
+      if (!res.headersSent) {
+        rejectJson(res, 500, "Internal server error");
       }
-      const searchToolName = searchEndpoint === 'vip' ? 'jina_search_vip' : 'jina_search';
-      console.error(`Tools registered: jina_reader, ${searchToolName}`);
-      console.error(`Search endpoint: ${searchEndpoint === 'vip' ? 'svip.jina.ai' : 's.jina.ai'}`);
-    } else {
-      console.error("No Jina AI API key found. Only jina_reader tool registered (works without API key).");
-      console.error("To enable search tools, set the JINA_API_KEY environment variable.");
     }
+  });
 
-    if (transport === 'http') {
-      // HTTP transport mode
-      const app = express();
-      app.use(express.json());
+  app.get("/mcp", (_req, res) => {
+    res.setHeader("Allow", "POST");
+    rejectJson(res, 405, "Method not allowed");
+  });
 
-      app.post('/mcp', async (req, res) => {
-        try {
-          // Create a new transport for each request to prevent request ID collisions
-          const httpTransport = new StreamableHTTPServerTransport({
-            sessionIdGenerator: undefined,
-            enableJsonResponse: true
-          });
+  app.delete("/mcp", (_req, res) => {
+    res.setHeader("Allow", "POST");
+    rejectJson(res, 405, "Method not allowed");
+  });
 
-          res.on('close', () => {
-            httpTransport.close();
-          });
+  return app;
+}
 
-          await server.connect(httpTransport);
-          await httpTransport.handleRequest(req, res, req.body);
-        } catch (error) {
-          console.error('Error handling MCP request:', error);
-          if (!res.headersSent) {
-            res.status(500).json({
-              jsonrpc: '2.0',
-              error: {
-                code: -32603,
-                message: 'Internal server error'
-              },
-              id: null
-            });
-          }
-        }
-      });
-
-      const listeningHost = host;
-      const accessHost = formatHostForUrl(host);
-      const onListen = (): void => {
-        console.error(`Jina MCP Server running on http://${accessHost}:${port}/mcp`);
-        console.error(`Transport: HTTP (Streamable)`);
-        console.error(`Bound host: ${listeningHost}`);
-      };
-
-      const httpServer = app.listen(port, host, onListen);
-
-      httpServer.on('error', (error: Error) => {
-        console.error('Server error:', error);
-        process.exit(1);
-      });
-    } else {
-      // stdio transport mode (default)
-      console.error(`Transport: stdio`);
-      const stdioTransport = new StdioServerTransport();
-      await server.connect(stdioTransport);
+const logRegisteredTools = (apiKey: string | null, searchEndpoint: SearchEndpoint): void => {
+  if (apiKey) {
+    console.error(`Jina AI API key found with length ${apiKey.length}`);
+    if (apiKey.length < 10) {
+      console.warn("Warning: JINA_API_KEY seems too short. Please verify your API key.");
     }
+    const searchToolName = searchEndpoint === "vip" ? "jina_search_vip" : "jina_search";
+    console.error(`Tools registered: jina_reader, ${searchToolName}`);
+    console.error(`Search endpoint: ${searchEndpoint === "vip" ? "svip.jina.ai" : "s.jina.ai"}`);
+  } else {
+    console.error("No Jina AI API key found. Only jina_reader tool registered (works without API key).");
+    console.error("To enable search tools, set the JINA_API_KEY environment variable.");
+  }
+};
 
+export async function startServer(config: ServerConfig): Promise<void> {
+  const { cacheSize, host, port, searchEndpoint, tokensPerPage, transport } = config;
+
+  initializeCache(cacheSize);
+
+  const apiKey = getJinaApiKey();
+  logRegisteredTools(apiKey, searchEndpoint);
+
+  if (transport === "http") {
+    const app = createHttpApp(() => createMcpServer({
+      apiKey,
+      searchEndpoint,
+      tokensPerPage
+    }));
+    const accessHost = formatHostForUrl(host);
+
+    const httpServer = app.listen(port, host, () => {
+      console.error(`Jina MCP Server running on http://${accessHost}:${port}/mcp`);
+      console.error("Transport: HTTP (Streamable)");
+      console.error(`Bound host: ${host}`);
+    });
+
+    httpServer.on("error", (error: Error) => {
+      console.error("Server error:", error);
+      process.exit(1);
+    });
+
+    return;
+  }
+
+  console.error("Transport: stdio");
+  const server = createMcpServer({
+    apiKey,
+    searchEndpoint,
+    tokensPerPage
+  });
+  const stdioTransport = new StdioServerTransport();
+  await server.connect(stdioTransport);
+}
+
+export async function runCli(args = process.argv.slice(2)): Promise<void> {
+  try {
+    await startServer(parseArgs(args));
   } catch (error) {
+    if (error instanceof CliHelpRequested) {
+      console.error(error.message);
+      process.exit(error.exitCode);
+    }
+
+    if (error instanceof CliUsageError) {
+      console.error(formatCliError(error));
+      process.exit(error.exitCode);
+    }
+
     console.error("Server error:", error);
     process.exit(1);
   }
 }
 
-// Execute the main function
-main().catch((error: Error) => {
-  console.error("Fatal error in main():", error);
-  process.exit(1);
-});
+const entrypoint = process.argv[1] ? pathToFileURL(process.argv[1]).href : undefined;
+if (import.meta.url === entrypoint) {
+  runCli().catch((error: Error) => {
+    console.error("Fatal error in main():", error);
+    process.exit(1);
+  });
+}

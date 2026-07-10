@@ -12,7 +12,7 @@ This MCP server provides access to the following Jina AI APIs:
 ## Prerequisites
 
 1. **Jina AI API Key** (Optional) - Get a free API key from [https://jina.ai/?sui=apikey](https://jina.ai/?sui=apikey) for enhanced features
-2. **Node.js** - Version 16 or higher
+2. **Node.js** - Version 20 or higher
 
 
 ## MCP Server
@@ -67,19 +67,55 @@ npx jina-mcp-tools --transport http --port 3000
 - `--cache-size` - Reader cache size in URLs (default: 50)
 - `--help` - Show the built-in CLI help
 
-### Proxy Environment Variables
+### HTTP Security
 
-Outbound HTTP requests now honor standard proxy environment variables. This applies to `jina_reader`, `jina_search`, and `jina_search_vip`.
-
-- Supported proxy variables: `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`
-- Lowercase variants are also supported: `http_proxy`, `https_proxy`, `all_proxy`
-- Exclusions are respected via `NO_PROXY` / `no_proxy`
-
-Example:
+HTTP mode binds to `127.0.0.1` by default. For remote deployments, put the server behind TLS and set a bearer token:
 
 ```bash
-HTTPS_PROXY=http://proxy.internal:8080 npx jina-mcp-tools --transport stdio
+JINA_MCP_HTTP_AUTH_TOKEN=change-me npx jina-mcp-tools --transport http --host 0.0.0.0 --port 3000
 ```
+
+Clients must then send:
+
+```http
+Authorization: Bearer change-me
+```
+
+Browser-origin requests are limited to localhost by default. Set `JINA_MCP_ALLOWED_ORIGINS` to a comma-separated allowlist for browser-based remote clients.
+
+### Proxy Environment Variables
+
+To route outbound requests through a proxy, enable proxy environment support and provide the proxy URLs:
+
+```bash
+NODE_USE_ENV_PROXY=1 \
+HTTP_PROXY=http://127.0.0.1:7890 \
+HTTPS_PROXY=http://127.0.0.1:7890 \
+NO_PROXY=localhost,127.0.0.1,::1 \
+npx jina-mcp-tools --transport stdio
+```
+
+For MCP client configs, include the same environment variables:
+
+```json
+{
+  "mcpServers": {
+    "jina-mcp-tools": {
+      "command": "npx",
+      "args": ["jina-mcp-tools"],
+      "env": {
+        "JINA_API_KEY": "your_jina_api_key_here_optional",
+        "NODE_USE_ENV_PROXY": "1",
+        "HTTP_PROXY": "http://127.0.0.1:7890",
+        "HTTPS_PROXY": "http://127.0.0.1:7890",
+        "NO_PROXY": "localhost,127.0.0.1,::1"
+      }
+    }
+  }
+}
+```
+
+Alternatively, start Node with `NODE_OPTIONS=--use-env-proxy`. Proxy URLs are only used when proxy environment support is enabled.
 
 ## Available Tools
 

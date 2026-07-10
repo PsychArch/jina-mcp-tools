@@ -1,8 +1,82 @@
 import { z } from "zod";
-import fetch from "node-fetch";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { createHeaders, getFetchAgent } from "./utils.js";
+import { createHeaders } from "./utils.js";
 import { JinaVipSearchResponse } from "./types.js";
+
+interface VipSearchInput {
+  query: string;
+  count?: number;
+  siteFilter?: string;
+}
+
+type ToolTextResult = {
+  content: Array<{
+    type: "text";
+    text: string;
+  }>;
+  isError?: boolean;
+};
+
+export async function searchJinaVip(
+  { query, count = 5, siteFilter }: VipSearchInput
+): Promise<ToolTextResult> {
+  try {
+    const encodedQuery = encodeURIComponent(query);
+    const baseHeaders: Record<string, string> = {
+      "Accept": "application/json",
+      "X-Respond-With": "no-content",
+    };
+
+    if (siteFilter) {
+      baseHeaders["X-Site"] = siteFilter;
+    }
+
+    const headers = createHeaders(baseHeaders);
+
+    const response = await fetch(`https://svip.jina.ai/?q=${encodedQuery}`, {
+      method: "GET",
+      headers
+    });
+
+    const jsonResponse = await response.json() as JinaVipSearchResponse;
+
+    if (!response.ok) {
+      const errorMessage = jsonResponse.message || jsonResponse.error || `Jina VIP Search API error (${response.status})`;
+      throw new Error(errorMessage);
+    }
+
+    const results = jsonResponse.results || [];
+    const limitedResults = results.slice(0, count);
+    const formattedText = limitedResults.map((result, index) => {
+      const num = index + 1;
+      let text = `[${num}] Title: ${result.title}\n`;
+      text += `[${num}] URL Source: ${result.url}\n`;
+      if (result.snippet) {
+        text += `[${num}] Description: ${result.snippet}\n`;
+      }
+      if (result.date) {
+        text += `[${num}] Date: ${result.date}\n`;
+      }
+      return text;
+    }).join('\n');
+
+    return {
+      content: [{
+        type: "text",
+        text: formattedText
+      }]
+    };
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    return {
+      content: [{
+        type: "text",
+        text: errorMessage
+      }],
+      isError: true
+    };
+  }
+}
 
 export function registerSearchVipTool(server: McpServer): void {
   server.registerTool(
@@ -16,68 +90,6 @@ export function registerSearchVipTool(server: McpServer): void {
         siteFilter: z.string().optional().describe("Limit search to specific domain (e.g., 'github.com')")
       }
     },
-    async ({ query, count, siteFilter }: {
-      query: string;
-      count?: number;
-      siteFilter?: string
-    }) => {
-      try {
-        const encodedQuery = encodeURIComponent(query);
-        const baseHeaders: Record<string, string> = {
-          "Accept": "application/json",
-          "X-Respond-With": "no-content",
-        };
-
-        if (siteFilter) {
-          baseHeaders["X-Site"] = siteFilter;
-        }
-
-        const headers = createHeaders(baseHeaders);
-
-        const response = await fetch(`https://svip.jina.ai/?q=${encodedQuery}`, {
-          agent: getFetchAgent(),
-          method: "GET",
-          headers
-        });
-
-        const jsonResponse = await response.json() as JinaVipSearchResponse;
-
-        if (!response.ok) {
-          const errorMessage = jsonResponse.message || jsonResponse.error || `Jina VIP Search API error (${response.status})`;
-          throw new Error(errorMessage);
-        }
-
-        const results = jsonResponse.results || [];
-        const limitedResults = results.slice(0, count);
-        const formattedText = limitedResults.map((result, index) => {
-          const num = index + 1;
-          let text = `[${num}] Title: ${result.title}\n`;
-          text += `[${num}] URL Source: ${result.url}\n`;
-          if (result.snippet) {
-            text += `[${num}] Description: ${result.snippet}\n`;
-          }
-          if (result.date) {
-            text += `[${num}] Date: ${result.date}\n`;
-          }
-          return text;
-        }).join('\n');
-
-        return {
-          content: [{
-            type: "text" as const,
-            text: formattedText
-          }]
-        };
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : String(error);
-        return {
-          content: [{
-            type: "text" as const,
-            text: errorMessage
-          }],
-          isError: true
-        };
-      }
-    }
+    async (args) => searchJinaVip(args)
   );
 }

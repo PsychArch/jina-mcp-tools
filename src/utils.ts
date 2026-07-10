@@ -1,8 +1,5 @@
 import { GitHubUrlResult } from './types.js';
-import { ProxyAgent } from 'proxy-agent';
 import { markdownNegotiationRules } from './markdown_allowlist.js';
-
-const fetchAgent = new ProxyAgent();
 
 export const getJinaApiKey = (): string | null => {
   return process.env.JINA_API_KEY || null;
@@ -17,10 +14,6 @@ export const createHeaders = (baseHeaders: Record<string, string> = {}): Record<
   }
 
   return headers;
-};
-
-export const getFetchAgent = (): ProxyAgent => {
-  return fetchAgent;
 };
 
 export const shouldTryMarkdownNegotiation = (url: string): boolean => {
