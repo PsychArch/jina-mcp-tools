@@ -1,7 +1,4 @@
-#!/usr/bin/env node
-
 import { createRequire } from "node:module";
-import { pathToFileURL } from "node:url";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
@@ -407,12 +404,4 @@ export async function runCli(args = process.argv.slice(2)): Promise<void> {
     console.error("Server error:", error);
     process.exit(1);
   }
-}
-
-const entrypoint = process.argv[1] ? pathToFileURL(process.argv[1]).href : undefined;
-if (import.meta.url === entrypoint) {
-  runCli().catch((error: Error) => {
-    console.error("Fatal error in main():", error);
-    process.exit(1);
-  });
 }

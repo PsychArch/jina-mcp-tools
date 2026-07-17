@@ -1,21 +1,23 @@
 {
   "name": "jina-mcp-tools",
-  "version": "1.2.4",
+  "version": "1.2.5",
   "description": "Jina AI Model Context Protocol (MCP) server that integrates with Jina AI APIs for web reading and search",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "type": "module",
   "packageManager": "pnpm@11.3.0",
   "bin": {
-    "jina-mcp-tools": "./dist/index.js"
+    "jina-mcp-tools": "./dist/cli.js"
   },
   "scripts": {
     "build": "tsc",
-    "dev": "tsx src/index.ts",
-    "start": "node dist/index.js",
+    "dev": "tsx src/cli.ts",
+    "start": "node dist/cli.js",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "prepublishOnly": "pnpm run build"
+    "test": "pnpm run build && vitest run",
+    "verify": "pnpm run typecheck && pnpm run test",
+    "prepack": "pnpm run build",
+    "prepublishOnly": "pnpm run verify"
   },
   "files": [
     "dist",

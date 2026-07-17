@@ -33,7 +33,9 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
-      - run: pnpm build
+      - run: pnpm verify
+
+      - run: pnpm pack --dry-run
 
       - name: Print publish diagnostics
         run: |
