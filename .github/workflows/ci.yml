@@ -12,11 +12,6 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        node-version:
-          - 20
-          - 24
 
     steps:
       - uses: actions/checkout@v6.0.2
@@ -25,7 +20,7 @@ jobs:
 
       - uses: actions/setup-node@v6.3.0
         with:
-          node-version: ${{ matrix.node-version }}
+          node-version: 24
           cache: pnpm
 
       - run: pnpm install --frozen-lockfile
@@ -33,3 +28,30 @@ jobs:
       - run: pnpm verify
 
       - run: pnpm pack --dry-run
+
+  runtime-node-20:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6.0.2
+
+      - uses: pnpm/action-setup@v5.0.0
+
+      - name: Set up the Node 24 build toolchain
+        uses: actions/setup-node@v6.3.0
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm build
+
+      - name: Switch to the minimum supported Node runtime
+        uses: actions/setup-node@v6.3.0
+        with:
+          node-version: 20
+          package-manager-cache: false
+
+      - name: Test compiled output on Node 20
+        run: node node_modules/vitest/vitest.mjs run
