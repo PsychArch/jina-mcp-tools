@@ -60,6 +60,24 @@ Reviewed 2026-09-16 against the installed SDK v2 API:
 
 ## Optional live provider checks
 
+With `JINA_API_KEY` already exported, run:
+
+```sh
+pnpm build
+node scripts/live-mcp.mjs
+# Retry only one case if needed:
+node scripts/live-mcp.mjs stdio/modern/vip
+```
+
+This opt-in script makes six intended provider requests: two reader fetches,
+two standard searches and two VIP searches. Reader pagination/repeated reads
+reuse each server's cache. It covers stdio legacy/modern and HTTP modern/legacy,
+prints credential-redacted JSON summaries, and exits nonzero on failure.
+HTTP uses the compiled application factory on an ephemeral loopback port with
+a random local bearer token; the script also checks 401 and 405 responses.
+Requests use the actual Jina services, so they may consume account credits.
+The script is excluded from the default suite and CI.
+
 Run these separately with an explicitly supplied test credential and a small
 request budget. Check one reader URL, one standard search and, when the account
 supports it, one VIP search through an MCP client. Check semantics and schema,
