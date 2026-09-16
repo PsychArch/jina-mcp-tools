@@ -1,7 +1,7 @@
 import { hostHeaderValidation, localhostHostValidation } from "@modelcontextprotocol/express";
 import { toNodeHandler } from "@modelcontextprotocol/node";
 import { createMcpHandler, type McpServer } from "@modelcontextprotocol/server";
-import express, { type Express, type Request, type Response } from "express";
+import express, { type ErrorRequestHandler, type Express, type Request, type Response } from "express";
 import { DEFAULT_CONFIG } from "./config.js";
 
 interface HttpAppOptions {
@@ -42,7 +42,8 @@ const isLocalhostBind = (host: string): boolean => {
 const isLocalhostOrigin = (origin: string): boolean => {
   try {
     const parsed = new URL(origin);
-    return ["localhost", "127.0.0.1", "::1"].includes(parsed.hostname);
+    return ["http:", "https:"].includes(parsed.protocol)
+      && ["localhost", "127.0.0.1", "[::1]"].includes(parsed.hostname);
   } catch {
     return false;
   }
@@ -93,7 +94,7 @@ export function createHttpApp(
   const authToken = options.authToken ?? process.env.JINA_MCP_HTTP_AUTH_TOKEN ?? null;
   const host = options.host ?? DEFAULT_CONFIG.host;
 
-  app.use(express.json());
+  app.disable("x-powered-by");
 
   if (allowedHosts.length > 0) {
     app.use(hostHeaderValidation([...allowedHosts]));
@@ -148,9 +149,23 @@ export function createHttpApp(
     onerror: (error) => console.error("Error adapting MCP request:", error)
   });
 
-  app.all("/mcp", async (req, res) => {
+  // Validate access before parsing untrusted request bodies.
+  app.all("/mcp", express.json({ limit: "100kb" }), async (req, res) => {
     await nodeHandler(req, res, req.body);
   });
+
+  // Express's development error handler exposes stack traces and local paths.
+  const handleError: ErrorRequestHandler = (error, _req, res, next) => {
+    if (res.headersSent) {
+      next(error);
+      return;
+    }
+    const status = Number(error?.status);
+    const clientError = Number.isInteger(status) && status >= 400 && status < 500;
+    rejectJson(res, clientError ? status : 500,
+      status === 413 ? "Request body too large" : clientError ? "Invalid request body" : "Internal server error");
+  };
+  app.use(handleError);
 
   return app;
 }

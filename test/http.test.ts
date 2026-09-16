@@ -40,6 +40,40 @@ const createTestApp = () => createHttpApp(() => createMcpServer({
 });
 
 describe("HTTP transport", () => {
+  it("authenticates before parsing malformed JSON", async () => {
+    const factory = vi.fn();
+    const app = createHttpApp(factory, { authToken: "test-http-token" });
+    const response = await request(app).post("/mcp")
+      .set("Content-Type", "application/json").send('{"sensitive":"unfinished');
+    expect(response.status).toBe(401);
+    expect(response.body.error.message).toBe("Unauthorized");
+    expect(factory).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['{"sensitive":"unfinished', 400, "Invalid request body"],
+    [JSON.stringify({ content: "x".repeat(110000) }), 413, "Request body too large"]
+  ])("sanitizes parser errors without exposing request data or local paths", async (body, status, message) => {
+    const response = await request(createTestApp()).post("/mcp")
+      .set("Content-Type", "application/json").send(body);
+    expect(response.status).toBe(status);
+    expect(response.body).toEqual({
+      jsonrpc: "2.0", error: { code: -32603, message }, id: null
+    });
+    expect(response.headers["x-powered-by"]).toBeUndefined();
+  });
+
+  it.each([
+    ["http://[::1]:3000", 204],
+    ["https://localhost:3000", 204],
+    ["ftp://localhost", 403],
+    ["http://localhost.evil.example", 403],
+    ["null", 403]
+  ])("validates browser origin %s", async (origin, status) => {
+    const response = await request(createTestApp()).options("/mcp").set("Origin", origin);
+    expect(response.status).toBe(status);
+  });
+
   it("accepts legacy initialize requests at POST /mcp", async () => {
     const app = createTestApp();
 

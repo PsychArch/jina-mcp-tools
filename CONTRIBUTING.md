@@ -38,5 +38,5 @@ For an explicitly authorized release:
 4. Verify the workflow result and registry metadata before reporting publication.
 
 The workflow also supports manual dispatch; use a version-tag ref so channel
-selection matches the intended release. The workflow chooses the channel from
-the ref, so verify the tag agrees with `package.json` before triggering it.
+selection matches the intended release. The workflow rejects branch refs and
+tags that do not match `package.json` before installing or publishing.
