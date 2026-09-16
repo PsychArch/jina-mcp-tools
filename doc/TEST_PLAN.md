@@ -27,7 +27,7 @@
 
 ## Expected Behavior
 
-- ✅ Automatic pagination for content exceeding token budget
+- ✅ Automatic reader content chunking for content exceeding the token budget (separate from MCP list pagination)
 - ✅ Natural break points (paragraphs > sentences > words)
 - ✅ Cached pages for instant retrieval
 - ✅ Clear pagination metadata (Page X of Y, token count)

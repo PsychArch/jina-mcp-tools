@@ -3,8 +3,8 @@ import { mkdtempSync, rmSync, symlinkSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
+import { Client } from "@modelcontextprotocol/client";
 import { describe, expect, it } from "vitest";
 
 const cliPath = resolve("dist/cli.js");
@@ -57,7 +57,7 @@ describe("compiled CLI entrypoint", () => {
   });
 
   it.skipIf(process.platform === "win32")(
-    "serves MCP over stdio through an npm-style symlink",
+    "serves legacy MCP over stdio through an npm-style symlink",
     async () => {
       const fixture = createCliSymlink();
       const transport = new StdioClientTransport({
@@ -72,6 +72,36 @@ describe("compiled CLI entrypoint", () => {
         await client.connect(transport, { timeout: 5000 });
         const result = await client.listTools(undefined, { timeout: 5000 });
 
+        expect(client.getProtocolEra()).toBe("legacy");
+        expect(result.tools.map((tool) => tool.name)).toContain("jina_reader");
+      } finally {
+        await client.close();
+        rmSync(fixture.directory, { force: true, recursive: true });
+      }
+    },
+    10000
+  );
+
+  it.skipIf(process.platform === "win32")(
+    "serves MCP 2026-07-28 over stdio through an npm-style symlink",
+    async () => {
+      const fixture = createCliSymlink();
+      const transport = new StdioClientTransport({
+        command: process.execPath,
+        args: [fixture.path],
+        env: cleanEnvironment(),
+        stderr: "pipe"
+      });
+      const client = new Client(
+        { name: "cli-modern-entrypoint-test", version: "1.0.0" },
+        { versionNegotiation: { mode: { pin: "2026-07-28" } } }
+      );
+
+      try {
+        await client.connect(transport, { timeout: 5000 });
+        const result = await client.listTools(undefined, { timeout: 5000 });
+
+        expect(client.getProtocolEra()).toBe("modern");
         expect(result.tools.map((tool) => tool.name)).toContain("jina_reader");
       } finally {
         await client.close();

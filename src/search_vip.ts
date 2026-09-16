@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer } from "@modelcontextprotocol/server";
 import { createHeaders } from "./utils.js";
 import { JinaVipSearchResponse } from "./types.js";
 
@@ -84,11 +84,11 @@ export function registerSearchVipTool(server: McpServer): void {
     {
       title: "Web Search",
       description: `Search the web. The response includes only partial contents of each web page. Use jina reader for full content.`,
-      inputSchema: {
+      inputSchema: z.object({
         query: z.string().min(1).describe("Search query to find information on the web"),
         count: z.number().optional().default(5).describe("Number of search results to return"),
         siteFilter: z.string().optional().describe("Limit search to specific domain (e.g., 'github.com')")
-      }
+      })
     },
     async (args) => searchJinaVip(args)
   );

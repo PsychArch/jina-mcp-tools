@@ -1,5 +1,7 @@
 allowBuilds:
   esbuild: true
+overrides:
+  hono: 4.13.1
 minimumReleaseAgeExclude:
   - '@vitest/expect@4.1.10'
   - '@vitest/mocker@4.1.10'
@@ -9,3 +11,4 @@ minimumReleaseAgeExclude:
   - '@vitest/spy@4.1.10'
   - '@vitest/utils@4.1.10'
   - vitest@4.1.10
+  - hono@4.13.1

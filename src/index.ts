@@ -1,7 +1,8 @@
 import { createRequire } from "node:module";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { hostHeaderValidation, localhostHostValidation } from "@modelcontextprotocol/express";
+import { toNodeHandler } from "@modelcontextprotocol/node";
+import { createMcpHandler, McpServer } from "@modelcontextprotocol/server";
+import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import express, { type Express, type Request, type Response } from "express";
 import { initializeCache } from "./cache.js";
 import { registerReaderTool } from "./reader.js";
@@ -29,7 +30,9 @@ interface McpServerOptions {
 
 interface HttpAppOptions {
   allowedOrigins?: readonly string[];
+  allowedHosts?: readonly string[];
   authToken?: string | null;
+  host?: string;
 }
 
 const require = createRequire(import.meta.url);
@@ -215,6 +218,22 @@ const parseAllowedOrigins = (): string[] => {
     .filter(Boolean);
 };
 
+const parseAllowedHosts = (): string[] => {
+  const value = process.env.JINA_MCP_ALLOWED_HOSTS;
+  if (!value) {
+    return [];
+  }
+
+  return value
+    .split(",")
+    .map((host) => host.trim())
+    .filter(Boolean);
+};
+
+const isLocalhostBind = (host: string): boolean => {
+  return ["localhost", "127.0.0.1", "::1"].includes(host);
+};
+
 const isLocalhostOrigin = (origin: string): boolean => {
   try {
     const parsed = new URL(origin);
@@ -265,9 +284,22 @@ export function createHttpApp(
 ): Express {
   const app = express();
   const allowedOrigins = options.allowedOrigins ?? parseAllowedOrigins();
+  const allowedHosts = options.allowedHosts ?? parseAllowedHosts();
   const authToken = options.authToken ?? process.env.JINA_MCP_HTTP_AUTH_TOKEN ?? null;
+  const host = options.host ?? DEFAULT_CONFIG.host;
 
   app.use(express.json());
+
+  if (allowedHosts.length > 0) {
+    app.use(hostHeaderValidation([...allowedHosts]));
+  } else if (isLocalhostBind(host)) {
+    app.use(localhostHostValidation());
+  } else {
+    console.warn(
+      `Warning: HTTP server is binding to ${host} without Host header validation. `
+      + "Set JINA_MCP_ALLOWED_HOSTS to the public hostnames accepted by this server."
+    );
+  }
 
   app.use("/mcp", (req, res, next) => {
     const origin = req.header("origin");
@@ -280,13 +312,20 @@ export function createHttpApp(
     if (origin) {
       res.setHeader("Access-Control-Allow-Origin", origin);
       res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-      res.setHeader("Access-Control-Allow-Headers", "Authorization, Content-Type, Accept");
+      res.setHeader(
+        "Access-Control-Allow-Headers",
+        "Authorization, Content-Type, Accept, MCP-Protocol-Version, Mcp-Method, Mcp-Name"
+      );
       res.vary("Origin");
     }
 
     if (req.method === "OPTIONS") {
       res.sendStatus(204);
       return;
+    }
+
+    if (req.method !== "POST") {
+      res.setHeader("Allow", "POST");
     }
 
     if (!hasValidBearerToken(req, authToken)) {
@@ -297,36 +336,15 @@ export function createHttpApp(
     next();
   });
 
-  app.post("/mcp", async (req, res) => {
-    try {
-      const httpTransport = new StreamableHTTPServerTransport({
-        sessionIdGenerator: undefined,
-        enableJsonResponse: true
-      });
-
-      res.on("close", () => {
-        void httpTransport.close();
-      });
-
-      const requestServer = serverFactory();
-      await requestServer.connect(httpTransport);
-      await httpTransport.handleRequest(req, res, req.body);
-    } catch (error) {
-      console.error("Error handling MCP request:", error);
-      if (!res.headersSent) {
-        rejectJson(res, 500, "Internal server error");
-      }
-    }
+  const mcpHandler = createMcpHandler(serverFactory, {
+    onerror: (error) => console.error("Error handling MCP request:", error)
+  });
+  const nodeHandler = toNodeHandler(mcpHandler, {
+    onerror: (error) => console.error("Error adapting MCP request:", error)
   });
 
-  app.get("/mcp", (_req, res) => {
-    res.setHeader("Allow", "POST");
-    rejectJson(res, 405, "Method not allowed");
-  });
-
-  app.delete("/mcp", (_req, res) => {
-    res.setHeader("Allow", "POST");
-    rejectJson(res, 405, "Method not allowed");
+  app.all("/mcp", async (req, res) => {
+    await nodeHandler(req, res, req.body);
   });
 
   return app;
@@ -360,7 +378,7 @@ export async function startServer(config: ServerConfig): Promise<void> {
       apiKey,
       searchEndpoint,
       tokensPerPage
-    }));
+    }), { host });
     const accessHost = formatHostForUrl(host);
 
     const httpServer = app.listen(port, host, () => {
@@ -378,13 +396,13 @@ export async function startServer(config: ServerConfig): Promise<void> {
   }
 
   console.error("Transport: stdio");
-  const server = createMcpServer({
+  serveStdio(() => createMcpServer({
     apiKey,
     searchEndpoint,
     tokensPerPage
+  }), {
+    onerror: (error) => console.error("MCP stdio error:", error)
   });
-  const stdioTransport = new StdioServerTransport();
-  await server.connect(stdioTransport);
 }
 
 export async function runCli(args = process.argv.slice(2)): Promise<void> {

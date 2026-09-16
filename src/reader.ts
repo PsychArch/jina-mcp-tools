@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer } from "@modelcontextprotocol/server";
 import { countTokens } from "./tokenizer.js";
 import { contentCache } from "./cache.js";
 import { paginateContent, getPage } from "./pagination.js";
@@ -193,11 +193,11 @@ export function registerReaderTool(
     {
       title: "Jina Web Reader",
       description: `Read and extract content from web page.`,
-      inputSchema: {
+      inputSchema: z.object({
         url: z.string().url().describe("URL of the webpage to read and extract content from"),
         customTimeout: z.number().optional().describe("Override timeout in seconds for slow sites"),
         page: z.number().optional().default(1).describe("Page number for paginated content (1-indexed)")
-      }
+      })
     },
     async (args) => readUrl(args, tokensPerPage)
   );
