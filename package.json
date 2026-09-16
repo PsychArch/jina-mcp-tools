@@ -13,8 +13,9 @@
     "build": "tsc",
     "dev": "tsx src/cli.ts",
     "start": "node dist/cli.js",
-    "typecheck": "tsc --noEmit",
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.test.json",
     "test": "pnpm run build && vitest run",
+    "test:e2e": "pnpm run build && vitest run test/mcp-e2e.test.ts",
     "verify": "pnpm run typecheck && pnpm run test",
     "prepack": "pnpm run build",
     "prepublishOnly": "pnpm run verify"

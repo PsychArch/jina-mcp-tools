@@ -1,4 +1,70 @@
-# Test Plan: jina_reader Tool
+# Test Plan: MCP server and Jina tools
+
+## Automated verification
+
+```sh
+pnpm verify    # source and test typechecks, build, all tests
+pnpm test:e2e  # build and compiled transport matrix only
+```
+
+`test/mcp-e2e.test.ts` runs 12 scenarios: stdio/HTTP × legacy/modern
+negotiation × standard search/VIP search/anonymous reader. Each scenario gets
+its own compiled server process and ephemeral loopback upstream server.
+Stdio launches the production CLI; HTTP launches the compiled application factory
+through a small fixture wrapper using port zero. Existing CLI tests cover direct
+and symlinked launch and import safety.
+
+The full flow is client connection and negotiation → tool discovery → tool call
+→ upstream HTTP request → parsing and pagination → serialized MCP result.
+Assertions cover:
+
+- Exact tool availability with and without a key, and endpoint selection.
+- Reader request body, bearer header, and custom timeout header.
+- Every reader page reconstructs the original multilingual document exactly;
+  cached pages do not refetch, invalid pages fail, and cache eviction refetches.
+- Standard and VIP search query encoding, site filtering, result limits and formatting.
+- Missing/invalid inputs, numeric bounds, unknown tools, upstream 429 errors,
+  and successful requests after errors on the same client connection.
+- Direct markdown, HTML and failed-negotiation fallback, GitHub raw conversion,
+  and anonymous upstream requests without authorization headers.
+- Authenticated HTTP calls and rejected unauthenticated/disallowed-origin requests.
+
+Only the child process's upstream fetch boundary is redirected by a test-only
+preload. Requests retain their original URL in a fixture header, method, headers,
+body and signal; MCP transport, registration, handlers, tokenizer, cache and
+response formatting are real. No production endpoint override is introduced.
+Child environments exclude real API keys, proxies and inherited Node options.
+All upstream destinations go to the local fixture, including unexpected URLs.
+Startup and MCP requests have bounded timeouts; teardown closes sockets and children.
+
+These are deterministic application E2E tests, not live Jina service tests.
+They do not verify TLS/DNS, real provider response drift, browser-enforced CORS,
+HTTP CLI argument-to-listener wiring, installed tarballs, or graceful shutdown.
+The current CI automatically runs them in the verification job and its Node 20
+runtime job; local success alone does not prove those remote jobs passed.
+
+## Basis in current MCP guidance
+
+Reviewed 2026-09-16 against the installed SDK v2 API:
+
+- The [official SDK client guide](https://ts.sdk.modelcontextprotocol.io/v2/clients/connect)
+  documents real child-process stdio and HTTP transports, plus in-memory testing.
+  Use real transports here to catch process and serialization regressions that
+  in-memory or direct-handler tests cannot exercise.
+- The [MCP tools specification](https://modelcontextprotocol.io/specification/2025-11-25/server/tools)
+  distinguishes protocol failures from tool execution errors. Assert unknown-tool
+  protocol errors separately from invalid-input/upstream `isError` results.
+- The [official Inspector](https://github.com/modelcontextprotocol/inspector)
+  is useful for interactive interoperability debugging. SDK-driven tests provide
+  repeatable CI coverage without an LLM or a browser dependency.
+
+## Optional live provider checks
+
+Run these separately with an explicitly supplied test credential and a small
+request budget. Check one reader URL, one standard search and, when the account
+supports it, one VIP search through an MCP client. Check semantics and schema,
+not exact search ranking or changing page text. Never make remote content size
+estimates below hard CI assertions.
 
 ## Test URLs
 

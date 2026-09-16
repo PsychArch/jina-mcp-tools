@@ -56,7 +56,7 @@ async function fetchMarkdownNegotiatedContent(
 
     const response = await fetch(url, init);
 
-    if (!response.ok) {
+    if (!response.ok || !/^text\/markdown(?:\s*;|$)/i.test(response.headers.get("content-type") ?? "")) {
       return null;
     }
 
@@ -195,8 +195,8 @@ export function registerReaderTool(
       description: `Read and extract content from web page.`,
       inputSchema: z.object({
         url: z.string().url().describe("URL of the webpage to read and extract content from"),
-        customTimeout: z.number().optional().describe("Override timeout in seconds for slow sites"),
-        page: z.number().optional().default(1).describe("Page number for paginated content (1-indexed)")
+        customTimeout: z.number().int().positive().max(2147483).optional().describe("Override timeout in whole seconds (1-2147483) for slow sites"),
+        page: z.number().int().positive().optional().default(1).describe("Page number for paginated content (1-indexed)")
       })
     },
     async (args) => readUrl(args, tokensPerPage)

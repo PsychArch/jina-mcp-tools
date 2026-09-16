@@ -269,6 +269,14 @@ For MCP clients that use the `mcpServers` configuration format, include the same
 
 Alternatively, start Node with `NODE_OPTIONS=--use-env-proxy`. Proxy URLs are only used when proxy environment support is enabled.
 
+## Development and testing
+
+Run `pnpm verify` to typecheck production and test code, build, and run all tests.
+Run `pnpm test:e2e` for the compiled MCP transport suite alone. It covers stdio
+and HTTP with legacy and modern protocol negotiation, reader/search calls,
+pagination, upstream requests, and error recovery without real API credentials.
+See [the test plan](doc/TEST_PLAN.md) for coverage, boundaries, and live checks.
+
 ## Scope and Non-Goals
 
 This project intentionally does not aim to expose every Jina API. It is not the right choice when you need embeddings, reranking, classification, screenshots, image or academic search, query expansion, deduplication, or structured PDF extraction. Use the official [MCP server](https://github.com/jina-ai/MCP) or [CLI](https://github.com/jina-ai/cli) for those jobs.

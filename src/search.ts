@@ -85,7 +85,7 @@ export function registerSearchTool(server: McpServer): void {
       description: `Search the web. The response includes only partial contents of each web page. Use jina reader for full content.`,
       inputSchema: z.object({
         query: z.string().min(1).describe("Search query"),
-        count: z.number().optional().default(5).describe("Number of search results to return"),
+        count: z.number().int().positive().optional().default(5).describe("Number of search results to return"),
         siteFilter: z.string().optional().describe("Limit search to specific domain (e.g., 'github.com')")
       })
     },
