@@ -43,28 +43,13 @@ HTTP CLI argument-to-listener wiring, installed tarballs, or graceful shutdown.
 The current CI automatically runs them in the verification job and its Node 20
 runtime job; local success alone does not prove those remote jobs passed.
 
-## Basis in current MCP guidance
-
-Reviewed 2026-09-16 against the installed SDK v2 API:
-
-- The [official SDK client guide](https://ts.sdk.modelcontextprotocol.io/v2/clients/connect)
-  documents real child-process stdio and HTTP transports, plus in-memory testing.
-  Use real transports here to catch process and serialization regressions that
-  in-memory or direct-handler tests cannot exercise.
-- The [MCP tools specification](https://modelcontextprotocol.io/specification/2025-11-25/server/tools)
-  distinguishes protocol failures from tool execution errors. Assert unknown-tool
-  protocol errors separately from invalid-input/upstream `isError` results.
-- The [official Inspector](https://github.com/modelcontextprotocol/inspector)
-  is useful for interactive interoperability debugging. SDK-driven tests provide
-  repeatable CI coverage without an LLM or a browser dependency.
-
 ## Optional live provider checks
 
 With `JINA_API_KEY` already exported, run:
 
 ```sh
 pnpm build
-node scripts/live-mcp.mjs
+pnpm test:live
 # Retry only one case if needed:
 node scripts/live-mcp.mjs stdio/modern/vip
 ```
@@ -84,56 +69,67 @@ supports it, one VIP search through an MCP client. Check semantics and schema,
 not exact search ranking or changing page text. Never make remote content size
 estimates below hard CI assertions.
 
-## Test URLs
+## Live Codex client check
 
-| URL | Expected Tokens | Description |
-|-----|----------------|-------------|
-| https://www.alibabacloud.com/help/en/model-studio/use-qwen-by-calling-api | ~48k | Alibaba Cloud - Qwen API docs |
-| https://huggingface.co/docs/transformers/main/en/model_doc/qwen3_omni_moe | ~30k | HuggingFace - Qwen3 docs |
-| https://platform.openai.com/docs/api-reference/responses/create | ~161k | OpenAI API reference |
-| https://docs.nvidia.com/cuda/parallel-thread-execution | ~991k | NVIDIA CUDA PTX (massive) |
-| https://developer.work.weixin.qq.com/document/path/94695 | ~33k | WeChat Work API (Chinese) |
-| https://man7.org/linux/man-pages/man1/tmux.1.html | ~51k | Linux man pages - tmux manual |
-| https://www.volcengine.com/docs/82379/1824121 | ~36k | VolcEngine docs (Chinese) |
-| https://modelcontextprotocol.io/specification/2025-06-18/server/tools | ~2.2k | MCP specification - tools |
-| https://gofastmcp.com/servers/tools | ~5.8k | GoFast MCP server tools |
-| https://docs.jina.ai/concepts/serving/executor/ | ~9.1k | Jina AI Search Foundation API Guide |
+Build the checkout and register it under a separate name so an installed or remote
+server cannot be mistaken for the code being tested:
 
-## Test Cases
+```sh
+pnpm build
+codex mcp add jina-local -- node "$PWD/dist/cli.js" --tokens-per-page 256
+```
 
-1. **Small page (< 20k tokens)** - Should return full content in single page
-2. **Medium page (20-50k tokens)** - Should paginate into 2-4 pages
-3. **Large page (50-200k tokens)** - Should paginate into 4-14 pages
-4. **Massive page (> 200k tokens)** - Should paginate into 14+ pages
-5. **Non-English content** - Test Chinese/international docs
-6. **Markdown negotiation success** - Allowlisted host returns markdown directly
-7. **Markdown negotiation fallback** - Non-allowlisted or failed direct response falls back to Jina cleanly
+In the generated `[mcp_servers.jina-local]` table in `~/.codex/config.toml`, add:
 
-## Expected Behavior
+```toml
+env_vars = ["JINA_API_KEY"]
+```
 
-- ✅ Automatic reader content chunking for content exceeding the token budget (separate from MCP list pagination)
-- ✅ Natural break points (paragraphs > sentences > words)
-- ✅ Cached pages for instant retrieval
-- ✅ Clear pagination metadata (Page X of Y, token count)
-- ✅ Next page hints in output
-- ✅ Allowlisted markdown-capable hosts prefer direct `Accept: text/markdown` responses
-- ✅ Failed or empty allowlisted direct responses fall back to Jina output
+This forwards the exported key without storing its value in configuration.
+Start Codex from a shell with `JINA_API_KEY` set. Use a fresh session because
+already-running clients do not automatically reload their MCP tool list.
 
-## Success Criteria
+```sh
+codex exec --ephemeral --json \
+  -o /tmp/jina-codex-result.md \
+  - < scripts/codex-live.prompt.txt > /tmp/jina-codex-events.jsonl
+```
 
-- All URLs accessible and paginated correctly
-- Token counts within configured limits per page
-- Cache hits on subsequent page requests
-- Clean markdown output maintained
+Inspect the JSONL for completed `mcp_tool_call` events using server `jina-local`,
+actual tool results, and no tool errors. A model's final success statement alone
+is insufficient. The prompt requests standard search, reader pages 1 and 2,
+and a repeated page 1. At the configured 256-token budget the document should
+span multiple pages; use returned metadata, not historical page counts.
+This makes two intended provider requests; cached reads stay local.
 
-## Markdown Negotiation Smoke Tests
+To check VIP with the same registration, override the launch arguments for one
+session (substitute the absolute checkout path), and change the prompt's search
+tool to `jina_search_vip`:
 
-| URL | Expected Path |
-|-----|---------------|
-| https://developers.cloudflare.com/agents/getting-started/build-a-chat-agent/ | Direct markdown via `Accept: text/markdown` |
-| https://blog.cloudflare.com/markdown-for-agents/ | Direct markdown via `Accept: text/markdown` |
-| https://developer.wordpress.org/reference/functions/get_permalink/ | Direct markdown via `Accept: text/markdown` |
-| https://vercel.com/docs | Direct markdown via `Accept: text/markdown` |
-| https://vercel.com/blog/self-driving-infrastructure | Direct markdown via `Accept: text/markdown` |
-| https://mintlify.com/docs | Direct markdown via `Accept: text/markdown` |
-| https://nextjs.org/docs | Skip direct probe and use Jina fallback |
+```sh
+sed 's/jina_search /jina_search_vip /g' scripts/codex-live.prompt.txt | \
+  codex exec --ephemeral --json \
+  -c 'mcp_servers.jina-local.args=["/absolute/checkout/dist/cli.js","--tokens-per-page","256","--search-endpoint","vip"]' \
+  -o /tmp/jina-codex-vip-result.md - > /tmp/jina-codex-vip-events.jsonl
+```
+
+Disable unrelated MCP entries for the test session if necessary using
+`-c 'mcp_servers.NAME.enabled=false'`. Keep raw logs and dated outcomes outside
+tracked documentation. Record failures and targeted retries separately; do not
+turn a successful retry into a claim that the initial run passed. These checks
+use real Jina credits and a configured Codex model provider, and remain opt-in.
+Remove the checkout registration when no longer wanted with
+`codex mcp remove jina-local`.
+
+## Additional manual coverage
+
+For broader provider investigations, choose a current small page, long document,
+Chinese document, GitHub blob URL, and markdown-negotiation host from
+`src/markdown_allowlist.ts`. Assert content and pagination against the response
+actually returned. Upstream sizes, accessibility and markdown support change;
+none is a fixed CI assertion. Test direct markdown success and HTML/empty/error
+fallback deterministically in the existing fixture suite.
+
+Known gaps include production request deadlines/cancellation, concurrent calls,
+graceful shutdown, browser-enforced CORS and fresh tarball installation. The live
+HTTP harness exercises the application factory, not HTTP CLI listener wiring.

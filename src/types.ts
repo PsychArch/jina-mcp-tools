@@ -55,3 +55,8 @@ export interface JinaVipSearchResponse {
   message?: string;
   error?: string;
 }
+
+export type ToolTextResult = {
+  content: Array<{ type: "text"; text: string }>;
+  isError?: boolean;
+};

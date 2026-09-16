@@ -112,6 +112,43 @@ describe("HTTP transport", () => {
     }
   });
 
+  it.each(["standard", "vip", null] as const)("uses explicit credentials for %s instead of the environment", async (endpoint) => {
+    initializeCache(10);
+    vi.stubEnv("JINA_API_KEY", "unrelated-environment-key");
+    const apiKey = endpoint ? "explicit-server-key" : null;
+    const app = createHttpApp(() => createMcpServer({
+      apiKey, searchEndpoint: endpoint ?? "standard", tokensPerPage: 1000
+    }), { authToken: "", allowedHosts: [], allowedOrigins: [] });
+    const { server, url } = await startHttpApp(app);
+    const nativeFetch = globalThis.fetch;
+    const client = new Client({ name: "credential-test", version: "1" });
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation(async () => new Response(JSON.stringify({
+      code: 200, data: { content: "Reader result" }, results: []
+    }), { headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      await client.connect(new StreamableHTTPClientTransport(url, { fetch: nativeFetch }));
+      const tools = (await client.listTools()).tools.map(tool => tool.name);
+      expect(tools).toHaveLength(endpoint ? 2 : 1);
+      expect((await client.callTool({ name: "jina_reader", arguments: { url: "https://example.com/credentials" } })).isError).not.toBe(true);
+      if (endpoint) {
+        fetchMock.mockImplementation(async () => new Response(JSON.stringify({ code: 200, data: [], results: [] }), {
+          headers: { "Content-Type": "application/json" }
+        }));
+        expect((await client.callTool({ name: endpoint === "vip" ? "jina_search_vip" : "jina_search", arguments: { query: "test" } })).isError).not.toBe(true);
+      }
+      expect(fetchMock).toHaveBeenCalledTimes(endpoint ? 2 : 1);
+      for (const call of fetchMock.mock.calls) {
+        expect(new Headers(call[1]?.headers).get("Authorization")).toBe(apiKey ? `Bearer ${apiKey}` : null);
+      }
+    } finally {
+      await client.close();
+      await stopHttpServer(server);
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+    }
+  });
+
   it("returns JSON-RPC -32603 for internal errors before headers are sent", async () => {
     const app = createHttpApp(() => {
       throw new Error("boom");

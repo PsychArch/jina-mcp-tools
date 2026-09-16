@@ -1,3 +1,4 @@
+import type { ToolTextResult } from "./types.js";
 import { z } from "zod";
 import { McpServer } from "@modelcontextprotocol/server";
 import { countTokens } from "./tokenizer.js";
@@ -5,6 +6,7 @@ import { contentCache } from "./cache.js";
 import { paginateContent, getPage } from "./pagination.js";
 import {
   createHeaders,
+  getJinaApiKey,
   handleGitHubUrl,
   buildJinaHeaders,
   shouldTryMarkdownNegotiation
@@ -16,14 +18,6 @@ interface ReaderInput {
   customTimeout?: number;
   page?: number;
 }
-
-type ToolTextResult = {
-  content: Array<{
-    type: "text";
-    text: string;
-  }>;
-  isError?: boolean;
-};
 
 const formatPageText = (
   content: string,
@@ -73,7 +67,8 @@ async function fetchMarkdownNegotiatedContent(
 
 export async function readUrl(
   { url, customTimeout, page = 1 }: ReaderInput,
-  tokensPerPage: number
+  tokensPerPage: number,
+  apiKey: string | null = getJinaApiKey()
 ): Promise<ToolTextResult> {
   try {
     if (contentCache.has(url)) {
@@ -128,7 +123,7 @@ export async function readUrl(
           jinaHeaders["X-Timeout"] = customTimeout.toString();
         }
 
-        const headers = createHeaders(jinaHeaders);
+        const headers = createHeaders(jinaHeaders, apiKey);
 
         const response = await fetch("https://r.jina.ai/", {
           method: "POST",
@@ -186,7 +181,8 @@ export async function readUrl(
 
 export function registerReaderTool(
   server: McpServer,
-  tokensPerPage: number
+  tokensPerPage: number,
+  apiKey: string | null = getJinaApiKey()
 ): void {
   server.registerTool(
     "jina_reader",
@@ -199,6 +195,6 @@ export function registerReaderTool(
         page: z.number().int().positive().optional().default(1).describe("Page number for paginated content (1-indexed)")
       })
     },
-    async (args) => readUrl(args, tokensPerPage)
+    async (args) => readUrl(args, tokensPerPage, apiKey)
   );
 }

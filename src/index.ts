@@ -1,26 +1,21 @@
 import { createRequire } from "node:module";
-import { hostHeaderValidation, localhostHostValidation } from "@modelcontextprotocol/express";
-import { toNodeHandler } from "@modelcontextprotocol/node";
-import { createMcpHandler, McpServer } from "@modelcontextprotocol/server";
+import { McpServer } from "@modelcontextprotocol/server";
 import { serveStdio } from "@modelcontextprotocol/server/stdio";
-import express, { type Express, type Request, type Response } from "express";
 import { initializeCache } from "./cache.js";
 import { registerReaderTool } from "./reader.js";
 import { registerSearchTool } from "./search.js";
 import { registerSearchVipTool } from "./search_vip.js";
 import { getJinaApiKey } from "./utils.js";
+import {
+  parseArgs, CliHelpRequested, CliUsageError, formatCliError,
+  formatHostForUrl, type ServerConfig
+} from "./config.js";
+import { createHttpApp } from "./http.js";
 
-type SearchEndpoint = "standard" | "vip";
-type TransportType = "stdio" | "http";
+export * from "./config.js";
+export { createHttpApp } from "./http.js";
 
-export interface ServerConfig {
-  cacheSize: number;
-  host: string;
-  port: number;
-  searchEndpoint: SearchEndpoint;
-  tokensPerPage: number;
-  transport: TransportType;
-}
+type SearchEndpoint = ServerConfig["searchEndpoint"];
 
 interface McpServerOptions {
   apiKey?: string | null;
@@ -28,159 +23,9 @@ interface McpServerOptions {
   tokensPerPage: number;
 }
 
-interface HttpAppOptions {
-  allowedOrigins?: readonly string[];
-  allowedHosts?: readonly string[];
-  authToken?: string | null;
-  host?: string;
-}
-
 const require = createRequire(import.meta.url);
 const packageJson = require("../package.json") as { version: string };
 const SERVER_VERSION = packageJson.version;
-
-export const DEFAULT_CONFIG: ServerConfig = {
-  cacheSize: 50,
-  host: "127.0.0.1",
-  port: 3000,
-  searchEndpoint: "standard",
-  tokensPerPage: 15000,
-  transport: "stdio"
-};
-
-export const USAGE = `Usage: jina-mcp-tools [options]
-
-Options:
-  --transport <stdio|http>         Transport type (default: stdio)
-  --host <host>                    Host/interface to bind in HTTP mode (default: 127.0.0.1)
-  --port <1-65535>                 HTTP server port (default: 3000)
-  --tokens-per-page <positive-int> Tokens per page for pagination (default: 15000)
-  --search-endpoint <standard|vip> Search endpoint to use (default: standard)
-  --cache-size <positive-int>      Reader cache size (default: 50)
-  -h, --help                       Show this help message`;
-
-export class CliUsageError extends Error {
-  readonly exitCode = 1;
-}
-
-export class CliHelpRequested extends Error {
-  readonly exitCode = 0;
-
-  constructor() {
-    super(USAGE);
-  }
-}
-
-export const formatHostForUrl = (hostValue: string): string => {
-  return hostValue.includes(":") && !hostValue.startsWith("[") ? `[${hostValue}]` : hostValue;
-};
-
-const failCli = (message: string): never => {
-  throw new CliUsageError(message);
-};
-
-const getOptionValue = (args: string[], index: number, option: string): string => {
-  const value = args[index + 1];
-
-  if (value === undefined) {
-    failCli(`Missing value for ${option}.`);
-  }
-
-  if (value.startsWith("-")) {
-    failCli(`Expected a value for ${option}, received another option: ${value}`);
-  }
-
-  return value;
-};
-
-const parsePositiveInteger = (
-  value: string,
-  option: string,
-  max?: number
-): number => {
-  if (!/^\d+$/.test(value)) {
-    failCli(`Invalid value for ${option}: ${value}. Expected a positive integer.`);
-  }
-
-  const parsed = Number(value);
-  if (!Number.isSafeInteger(parsed) || parsed <= 0) {
-    failCli(`Invalid value for ${option}: ${value}. Expected a positive integer.`);
-  }
-
-  if (max !== undefined && parsed > max) {
-    failCli(`Invalid value for ${option}: ${value}. Maximum allowed value is ${max}.`);
-  }
-
-  return parsed;
-};
-
-export const parseArgs = (args: string[]): ServerConfig => {
-  const config: ServerConfig = { ...DEFAULT_CONFIG };
-
-  for (let i = 0; i < args.length; i++) {
-    const arg = args[i];
-
-    if (arg === undefined) {
-      continue;
-    }
-
-    switch (arg) {
-      case "-h":
-      case "--help":
-        throw new CliHelpRequested();
-      case "--tokens-per-page":
-        config.tokensPerPage = parsePositiveInteger(
-          getOptionValue(args, i, arg),
-          arg
-        );
-        i++;
-        break;
-      case "--search-endpoint": {
-        const endpoint = getOptionValue(args, i, arg).toLowerCase();
-        if (endpoint !== "standard" && endpoint !== "vip") {
-          failCli(`Invalid value for ${arg}: ${endpoint}. Expected standard or vip.`);
-        }
-        config.searchEndpoint = endpoint as SearchEndpoint;
-        i++;
-        break;
-      }
-      case "--transport": {
-        const selectedTransport = getOptionValue(args, i, arg).toLowerCase();
-        if (selectedTransport !== "stdio" && selectedTransport !== "http") {
-          failCli(`Invalid value for ${arg}: ${selectedTransport}. Expected stdio or http.`);
-        }
-        config.transport = selectedTransport as TransportType;
-        i++;
-        break;
-      }
-      case "--port":
-        config.port = parsePositiveInteger(getOptionValue(args, i, arg), arg, 65535);
-        i++;
-        break;
-      case "--host": {
-        const host = getOptionValue(args, i, arg).trim();
-        if (!host) {
-          failCli(`Invalid value for ${arg}: host cannot be empty.`);
-        }
-        config.host = host;
-        i++;
-        break;
-      }
-      case "--cache-size":
-        config.cacheSize = parsePositiveInteger(getOptionValue(args, i, arg), arg);
-        i++;
-        break;
-      default:
-        failCli(`Unknown argument: ${arg}`);
-    }
-  }
-
-  return config;
-};
-
-export const formatCliError = (error: Error): string => {
-  return `${error.message}\n\n${USAGE}`;
-};
 
 export function createMcpServer({
   apiKey = getJinaApiKey(),
@@ -193,161 +38,17 @@ export function createMcpServer({
     description: "Jina AI tools for web reading and search"
   });
 
-  registerReaderTool(server, tokensPerPage);
+  registerReaderTool(server, tokensPerPage, apiKey);
 
   if (apiKey) {
     if (searchEndpoint === "vip") {
-      registerSearchVipTool(server);
+      registerSearchVipTool(server, apiKey);
     } else {
-      registerSearchTool(server);
+      registerSearchTool(server, apiKey);
     }
   }
 
   return server;
-}
-
-const parseAllowedOrigins = (): string[] => {
-  const value = process.env.JINA_MCP_ALLOWED_ORIGINS;
-  if (!value) {
-    return [];
-  }
-
-  return value
-    .split(",")
-    .map((origin) => origin.trim())
-    .filter(Boolean);
-};
-
-const parseAllowedHosts = (): string[] => {
-  const value = process.env.JINA_MCP_ALLOWED_HOSTS;
-  if (!value) {
-    return [];
-  }
-
-  return value
-    .split(",")
-    .map((host) => host.trim())
-    .filter(Boolean);
-};
-
-const isLocalhostBind = (host: string): boolean => {
-  return ["localhost", "127.0.0.1", "::1"].includes(host);
-};
-
-const isLocalhostOrigin = (origin: string): boolean => {
-  try {
-    const parsed = new URL(origin);
-    return ["localhost", "127.0.0.1", "::1"].includes(parsed.hostname);
-  } catch {
-    return false;
-  }
-};
-
-const isOriginAllowed = (
-  origin: string | undefined,
-  allowedOrigins: readonly string[]
-): boolean => {
-  if (!origin) {
-    return true;
-  }
-
-  return allowedOrigins.includes("*")
-    || allowedOrigins.includes(origin)
-    || isLocalhostOrigin(origin);
-};
-
-const hasValidBearerToken = (
-  req: Request,
-  authToken: string | null | undefined
-): boolean => {
-  if (!authToken) {
-    return true;
-  }
-
-  return req.header("authorization") === `Bearer ${authToken}`;
-};
-
-const rejectJson = (res: Response, status: number, message: string): void => {
-  res.status(status).json({
-    jsonrpc: "2.0",
-    error: {
-      code: -32603,
-      message
-    },
-    id: null
-  });
-};
-
-export function createHttpApp(
-  serverFactory: () => McpServer,
-  options: HttpAppOptions = {}
-): Express {
-  const app = express();
-  const allowedOrigins = options.allowedOrigins ?? parseAllowedOrigins();
-  const allowedHosts = options.allowedHosts ?? parseAllowedHosts();
-  const authToken = options.authToken ?? process.env.JINA_MCP_HTTP_AUTH_TOKEN ?? null;
-  const host = options.host ?? DEFAULT_CONFIG.host;
-
-  app.use(express.json());
-
-  if (allowedHosts.length > 0) {
-    app.use(hostHeaderValidation([...allowedHosts]));
-  } else if (isLocalhostBind(host)) {
-    app.use(localhostHostValidation());
-  } else {
-    console.warn(
-      `Warning: HTTP server is binding to ${host} without Host header validation. `
-      + "Set JINA_MCP_ALLOWED_HOSTS to the public hostnames accepted by this server."
-    );
-  }
-
-  app.use("/mcp", (req, res, next) => {
-    const origin = req.header("origin");
-
-    if (!isOriginAllowed(origin, allowedOrigins)) {
-      rejectJson(res, 403, "Origin is not allowed");
-      return;
-    }
-
-    if (origin) {
-      res.setHeader("Access-Control-Allow-Origin", origin);
-      res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
-      res.setHeader(
-        "Access-Control-Allow-Headers",
-        "Authorization, Content-Type, Accept, MCP-Protocol-Version, Mcp-Method, Mcp-Name"
-      );
-      res.vary("Origin");
-    }
-
-    if (req.method === "OPTIONS") {
-      res.sendStatus(204);
-      return;
-    }
-
-    if (req.method !== "POST") {
-      res.setHeader("Allow", "POST");
-    }
-
-    if (!hasValidBearerToken(req, authToken)) {
-      rejectJson(res, 401, "Unauthorized");
-      return;
-    }
-
-    next();
-  });
-
-  const mcpHandler = createMcpHandler(serverFactory, {
-    onerror: (error) => console.error("Error handling MCP request:", error)
-  });
-  const nodeHandler = toNodeHandler(mcpHandler, {
-    onerror: (error) => console.error("Error adapting MCP request:", error)
-  });
-
-  app.all("/mcp", async (req, res) => {
-    await nodeHandler(req, res, req.body);
-  });
-
-  return app;
 }
 
 const logRegisteredTools = (apiKey: string | null, searchEndpoint: SearchEndpoint): void => {

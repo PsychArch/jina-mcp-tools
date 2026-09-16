@@ -1,83 +1,42 @@
-# Contributing to jina-mcp-tools
+# Contributing
 
-## Development Workflow
+## Development
 
-### Release Channels
+Use Node 24 for the build toolchain and the pnpm version pinned in
+`package.json`. The compiled package supports Node 20 and newer.
 
-This project maintains two release channels using a single unified workflow:
-
-#### 1. **Alpha Channel**
-- **Trigger**: Create and push alpha version tags (e.g., `v1.2.0-alpha.0`)
-- **Workflow**: `.github/workflows/npm-publish.yml`
-- **Versioning**: Semantic versioning with `-alpha.N` suffix
-  - Example: `1.2.0-alpha.0`, `1.2.0-alpha.1`
-- **npm tag**: `alpha`
-- **Installation**: `npm install jina-mcp-tools@alpha`
-
-#### 2. **Stable Channel**
-- **Trigger**: Create and push stable version tags (e.g., `v1.2.0`)
-- **Workflow**: `.github/workflows/npm-publish.yml`
-- **Versioning**: Standard semantic versioning
-  - Example: `1.2.0`, `1.2.1`
-- **npm tag**: `latest`
-- **Installation**: `npm install jina-mcp-tools`
-
-### Publishing Process
-
-#### Publishing Alpha Releases
-```bash
-# 1. Update version to alpha in package.json
-npm version 1.2.0-alpha.0 --no-git-tag-version
-
-# 2. Commit the version change
-git add package.json
-git commit -m "Release v1.2.0-alpha.0"
-
-# 3. Create and push the tag
-git tag v1.2.0-alpha.0
-git push origin v1.2.0-alpha.0
-
-# The workflow will automatically detect it's an alpha and publish with --tag alpha
+```sh
+pnpm install --frozen-lockfile
+pnpm verify
+pnpm pack --dry-run
 ```
 
-#### Publishing Stable Releases
-```bash
-# 1. Update version in package.json
-npm version 1.2.0 --no-git-tag-version
+`pnpm verify` typechecks source and tests, builds, and runs the deterministic
+suite. CI repeats compiled tests on Node 20. Live provider and Codex checks are
+opt-in and billable; see [the test plan](doc/TEST_PLAN.md). Never commit API keys
+or raw session logs.
 
-# 2. Commit the version change
-git add package.json
-git commit -m "Release v1.2.0"
+See [architecture](doc/ARCHITECTURE.md) for module responsibilities and current
+limitations. Update README options/tool behavior and the test plan in the same
+change as their implementation. Prefer reproducible commands and assertions to
+tracked test-result snapshots or hardcoded counts of passing tests.
 
-# 3. Create and push the tag
-git tag v1.2.0
-git push origin v1.2.0
+## Releases
 
-# The workflow will automatically detect it's stable and publish with --tag latest
-```
+The `.github/workflows/npm-publish.yml` workflow verifies and packs before
+publishing to the npm registry through Trusted Publishing (OIDC). It uses Node
+24 and the pinned pnpm; its final publish command uses npm for provenance/OIDC.
+No npm token is required when the repository's Trusted Publisher is configured.
 
-### How the Unified Workflow Works
+For an explicitly authorized release:
 
-The workflow automatically detects the release type based on the version tag:
-- Tags matching `v*.*.*-alpha.*` → Published with `--tag alpha`
-- Tags matching `v*.*.*` → Published with `--tag latest`
+1. Update `package.json` with `pnpm version <version> --no-git-tag-version`.
+2. Run the verification and package checks above, inspect the diff, and commit
+   the release changes.
+3. Create and push a matching `v<version>` tag. Stable versions publish to
+   `latest`; `-alpha.N` versions publish to `alpha`.
+4. Verify the workflow result and registry metadata before reporting publication.
 
-This approach:
-- Uses a single Trusted Publisher configuration on npmjs.com
-- Requires manual version tagging (more control, less automation)
-- Clearly separates alpha and stable releases
-- Maintains standard npm distribution tag conventions
-
-### Authentication
-
-The workflow uses **npm Trusted Publishers** (OIDC) for secure, token-free publishing:
-- No `NPM_TOKEN` secrets needed
-- Automatic provenance attestation
-- Better supply chain security
-- Configured on npmjs.com for this GitHub repository
-
-### Requirements
-
-- Node.js 22+
-- npm latest (auto-installed in workflows)
-- Trusted Publishers configured on npmjs.com
+The workflow also supports manual dispatch; use a version-tag ref so channel
+selection matches the intended release. The workflow chooses the channel from
+the ref, so verify the tag agrees with `package.json` before triggering it.

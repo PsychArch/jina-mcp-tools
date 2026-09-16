@@ -1,24 +1,12 @@
-import { z } from "zod";
+import type { ToolTextResult } from "./types.js";
+import { searchInputSchema, formatSearchResults, type SearchInput } from "./search_shared.js";
 import { McpServer } from "@modelcontextprotocol/server";
-import { createHeaders } from "./utils.js";
+import { createHeaders, getJinaApiKey } from "./utils.js";
 import { JinaSearchResponse } from "./types.js";
 
-interface SearchInput {
-  query: string;
-  count?: number;
-  siteFilter?: string;
-}
-
-type ToolTextResult = {
-  content: Array<{
-    type: "text";
-    text: string;
-  }>;
-  isError?: boolean;
-};
-
 export async function searchJina(
-  { query, count = 5, siteFilter }: SearchInput
+  { query, count = 5, siteFilter }: SearchInput,
+  apiKey: string | null = getJinaApiKey()
 ): Promise<ToolTextResult> {
   try {
     const encodedQuery = encodeURIComponent(query);
@@ -31,7 +19,7 @@ export async function searchJina(
       baseHeaders["X-Site"] = siteFilter;
     }
 
-    const headers = createHeaders(baseHeaders);
+    const headers = createHeaders(baseHeaders, apiKey);
 
     const response = await fetch(`https://s.jina.ai/?q=${encodedQuery}`, {
       method: "GET",
@@ -46,18 +34,7 @@ export async function searchJina(
 
     const data = jsonResponse.data || [];
     const limitedData = data.slice(0, count);
-    const formattedText = limitedData.map((result, index) => {
-      const num = index + 1;
-      let text = `[${num}] Title: ${result.title}\n`;
-      text += `[${num}] URL Source: ${result.url}\n`;
-      if (result.description) {
-        text += `[${num}] Description: ${result.description}\n`;
-      }
-      if (result.date) {
-        text += `[${num}] Date: ${result.date}\n`;
-      }
-      return text;
-    }).join('\n');
+    const formattedText = formatSearchResults(limitedData);
 
     return {
       content: [{
@@ -77,18 +54,14 @@ export async function searchJina(
   }
 }
 
-export function registerSearchTool(server: McpServer): void {
+export function registerSearchTool(server: McpServer, apiKey: string | null = getJinaApiKey()): void {
   server.registerTool(
     "jina_search",
     {
       title: "Web Search",
       description: `Search the web. The response includes only partial contents of each web page. Use jina reader for full content.`,
-      inputSchema: z.object({
-        query: z.string().min(1).describe("Search query"),
-        count: z.number().int().positive().optional().default(5).describe("Number of search results to return"),
-        siteFilter: z.string().optional().describe("Limit search to specific domain (e.g., 'github.com')")
-      })
+      inputSchema: searchInputSchema
     },
-    async (args) => searchJina(args)
+    async (args) => searchJina(args, apiKey)
   );
 }

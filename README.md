@@ -275,7 +275,10 @@ Run `pnpm verify` to typecheck production and test code, build, and run all test
 Run `pnpm test:e2e` for the compiled MCP transport suite alone. It covers stdio
 and HTTP with legacy and modern protocol negotiation, reader/search calls,
 pagination, upstream requests, and error recovery without real API credentials.
-See [the test plan](doc/TEST_PLAN.md) for coverage, boundaries, and live checks.
+Run `pnpm test:live` for opt-in real Jina calls using an exported `JINA_API_KEY`.
+See [the test plan](doc/TEST_PLAN.md) for coverage, boundaries, and a real Codex
+client workflow. See [architecture](doc/ARCHITECTURE.md) and
+[contributing](CONTRIBUTING.md) for module boundaries and development/release steps.
 
 ## Scope and Non-Goals
 
