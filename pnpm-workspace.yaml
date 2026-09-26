@@ -1,11 +1,15 @@
 allowBuilds:
   esbuild: true
+overrides:
+  hono: 4.13.5
+  qs: 6.16.0
 minimumReleaseAgeExclude:
-  - '@vitest/expect@4.1.10'
-  - '@vitest/mocker@4.1.10'
-  - '@vitest/pretty-format@4.1.10'
-  - '@vitest/runner@4.1.10'
-  - '@vitest/snapshot@4.1.10'
-  - '@vitest/spy@4.1.10'
-  - '@vitest/utils@4.1.10'
-  - vitest@4.1.10
+  - '@vitest/expect@4.1.11'
+  - '@vitest/mocker@4.1.11'
+  - '@vitest/pretty-format@4.1.11'
+  - '@vitest/runner@4.1.11'
+  - '@vitest/snapshot@4.1.11'
+  - '@vitest/spy@4.1.11'
+  - '@vitest/utils@4.1.11'
+  - vitest@4.1.11
+  - hono@4.13.5

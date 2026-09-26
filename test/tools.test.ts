@@ -25,7 +25,7 @@ const jsonResponse = (body: unknown, status = 200): Response => {
 };
 
 const textResponse = (body: string, status = 200): Response => {
-  return new Response(body, { status });
+  return new Response(body, { status, headers: { "Content-Type": "text/markdown" } });
 };
 
 beforeEach(() => {

@@ -5,9 +5,8 @@ export const getJinaApiKey = (): string | null => {
   return process.env.JINA_API_KEY || null;
 };
 
-export const createHeaders = (baseHeaders: Record<string, string> = {}): Record<string, string> => {
+export const createHeaders = (baseHeaders: Record<string, string> = {}, apiKey: string | null = getJinaApiKey()): Record<string, string> => {
   const headers: Record<string, string> = { ...baseHeaders };
-  const apiKey = getJinaApiKey();
 
   if (apiKey) {
     headers["Authorization"] = `Bearer ${apiKey}`;

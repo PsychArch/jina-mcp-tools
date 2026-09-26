@@ -1,10 +1,12 @@
+import type { ToolTextResult } from "./types.js";
 import { z } from "zod";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import { McpServer } from "@modelcontextprotocol/server";
 import { countTokens } from "./tokenizer.js";
 import { contentCache } from "./cache.js";
 import { paginateContent, getPage } from "./pagination.js";
 import {
   createHeaders,
+  getJinaApiKey,
   handleGitHubUrl,
   buildJinaHeaders,
   shouldTryMarkdownNegotiation
@@ -16,14 +18,6 @@ interface ReaderInput {
   customTimeout?: number;
   page?: number;
 }
-
-type ToolTextResult = {
-  content: Array<{
-    type: "text";
-    text: string;
-  }>;
-  isError?: boolean;
-};
 
 const formatPageText = (
   content: string,
@@ -56,7 +50,7 @@ async function fetchMarkdownNegotiatedContent(
 
     const response = await fetch(url, init);
 
-    if (!response.ok) {
+    if (!response.ok || !/^text\/markdown(?:\s*;|$)/i.test(response.headers.get("content-type") ?? "")) {
       return null;
     }
 
@@ -73,7 +67,8 @@ async function fetchMarkdownNegotiatedContent(
 
 export async function readUrl(
   { url, customTimeout, page = 1 }: ReaderInput,
-  tokensPerPage: number
+  tokensPerPage: number,
+  apiKey: string | null = getJinaApiKey()
 ): Promise<ToolTextResult> {
   try {
     if (contentCache.has(url)) {
@@ -128,7 +123,7 @@ export async function readUrl(
           jinaHeaders["X-Timeout"] = customTimeout.toString();
         }
 
-        const headers = createHeaders(jinaHeaders);
+        const headers = createHeaders(jinaHeaders, apiKey);
 
         const response = await fetch("https://r.jina.ai/", {
           method: "POST",
@@ -186,19 +181,20 @@ export async function readUrl(
 
 export function registerReaderTool(
   server: McpServer,
-  tokensPerPage: number
+  tokensPerPage: number,
+  apiKey: string | null = getJinaApiKey()
 ): void {
   server.registerTool(
     "jina_reader",
     {
       title: "Jina Web Reader",
       description: `Read and extract content from web page.`,
-      inputSchema: {
+      inputSchema: z.object({
         url: z.string().url().describe("URL of the webpage to read and extract content from"),
-        customTimeout: z.number().optional().describe("Override timeout in seconds for slow sites"),
-        page: z.number().optional().default(1).describe("Page number for paginated content (1-indexed)")
-      }
+        customTimeout: z.number().int().positive().max(2147483).optional().describe("Override timeout in whole seconds (1-2147483) for slow sites"),
+        page: z.number().int().positive().optional().default(1).describe("Page number for paginated content (1-indexed)")
+      })
     },
-    async (args) => readUrl(args, tokensPerPage)
+    async (args) => readUrl(args, tokensPerPage, apiKey)
   );
 }

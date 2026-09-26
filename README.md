@@ -43,6 +43,12 @@ Choose the **official MCP server** when you want a hosted endpoint or need its w
 
 Choose the **official CLI** when your agent already has reliable shell access and you want Unix composition or the full Jina API suite without registering a large MCP catalog.
 
+## MCP Protocol Compatibility
+
+The same server supports both the current MCP `2026-07-28` protocol and legacy initialize-era clients over stdio and Streamable HTTP. Modern clients can use `server/discover` and per-request protocol metadata; older clients continue through the SDK's legacy compatibility path.
+
+MCP's cursor pagination applies to discovery operations such as `tools/list` and `resources/list`. The `page` parameter on `jina_reader` is separate application-level content chunking: it keeps one large document from becoming an oversized `tools/call` result, which MCP does not paginate automatically.
+
 ## Quick Start
 
 ### Prerequisites
@@ -213,6 +219,7 @@ HTTP mode binds to `127.0.0.1` by default. For a remote deployment, put the serv
 
 ```bash
 JINA_MCP_HTTP_AUTH_TOKEN=change-me \
+JINA_MCP_ALLOWED_HOSTS=mcp.example.com \
   npx -y jina-mcp-tools --transport http --host 0.0.0.0 --port 3000
 ```
 
@@ -222,7 +229,9 @@ Clients must send:
 Authorization: Bearer change-me
 ```
 
-Browser-origin requests are limited to localhost by default. Set `JINA_MCP_ALLOWED_ORIGINS` to a comma-separated allowlist for browser-based remote clients.
+Browser-origin requests are limited to localhost by default. Set `JINA_MCP_ALLOWED_ORIGINS` to a comma-separated allowlist of complete origins for browser-based remote clients, for example `https://app.example.com`.
+
+Loopback HTTP binds validate the `Host` header automatically. When binding to `0.0.0.0` or `::`, set `JINA_MCP_ALLOWED_HOSTS` to a comma-separated list of public hostnames accepted by the server, without schemes or ports. This protects the endpoint against DNS-rebinding and unexpected proxy hostnames.
 
 Running the MCP process locally does not make Jina requests offline: search and most reader requests still call Jina AI services. Some allowlisted markdown hosts and GitHub file URLs may be fetched directly.
 
@@ -259,6 +268,17 @@ For MCP clients that use the `mcpServers` configuration format, include the same
 ```
 
 Alternatively, start Node with `NODE_OPTIONS=--use-env-proxy`. Proxy URLs are only used when proxy environment support is enabled.
+
+## Development and testing
+
+Run `pnpm verify` to typecheck production and test code, build, and run all tests.
+Run `pnpm test:e2e` for the compiled MCP transport suite alone. It covers stdio
+and HTTP with legacy and modern protocol negotiation, reader/search calls,
+pagination, upstream requests, and error recovery without real API credentials.
+Run `pnpm test:live` for opt-in real Jina calls using an exported `JINA_API_KEY`.
+See [the test plan](doc/TEST_PLAN.md) for coverage, boundaries, and a real Codex
+client workflow. See [architecture](doc/ARCHITECTURE.md) and
+[contributing](CONTRIBUTING.md) for module boundaries and development/release steps.
 
 ## Scope and Non-Goals
 

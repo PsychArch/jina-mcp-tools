@@ -1,24 +1,12 @@
-import { z } from "zod";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { createHeaders } from "./utils.js";
+import type { ToolTextResult } from "./types.js";
+import { searchInputSchema, formatSearchResults, type SearchInput } from "./search_shared.js";
+import { McpServer } from "@modelcontextprotocol/server";
+import { createHeaders, getJinaApiKey } from "./utils.js";
 import { JinaVipSearchResponse } from "./types.js";
 
-interface VipSearchInput {
-  query: string;
-  count?: number;
-  siteFilter?: string;
-}
-
-type ToolTextResult = {
-  content: Array<{
-    type: "text";
-    text: string;
-  }>;
-  isError?: boolean;
-};
-
 export async function searchJinaVip(
-  { query, count = 5, siteFilter }: VipSearchInput
+  { query, count = 5, siteFilter }: SearchInput,
+  apiKey: string | null = getJinaApiKey()
 ): Promise<ToolTextResult> {
   try {
     const encodedQuery = encodeURIComponent(query);
@@ -31,7 +19,7 @@ export async function searchJinaVip(
       baseHeaders["X-Site"] = siteFilter;
     }
 
-    const headers = createHeaders(baseHeaders);
+    const headers = createHeaders(baseHeaders, apiKey);
 
     const response = await fetch(`https://svip.jina.ai/?q=${encodedQuery}`, {
       method: "GET",
@@ -47,18 +35,7 @@ export async function searchJinaVip(
 
     const results = jsonResponse.results || [];
     const limitedResults = results.slice(0, count);
-    const formattedText = limitedResults.map((result, index) => {
-      const num = index + 1;
-      let text = `[${num}] Title: ${result.title}\n`;
-      text += `[${num}] URL Source: ${result.url}\n`;
-      if (result.snippet) {
-        text += `[${num}] Description: ${result.snippet}\n`;
-      }
-      if (result.date) {
-        text += `[${num}] Date: ${result.date}\n`;
-      }
-      return text;
-    }).join('\n');
+    const formattedText = formatSearchResults(limitedResults.map(result => ({ ...result, description: result.snippet })));
 
     return {
       content: [{
@@ -78,18 +55,14 @@ export async function searchJinaVip(
   }
 }
 
-export function registerSearchVipTool(server: McpServer): void {
+export function registerSearchVipTool(server: McpServer, apiKey: string | null = getJinaApiKey()): void {
   server.registerTool(
     "jina_search_vip",
     {
       title: "Web Search",
       description: `Search the web. The response includes only partial contents of each web page. Use jina reader for full content.`,
-      inputSchema: {
-        query: z.string().min(1).describe("Search query to find information on the web"),
-        count: z.number().optional().default(5).describe("Number of search results to return"),
-        siteFilter: z.string().optional().describe("Limit search to specific domain (e.g., 'github.com')")
-      }
+      inputSchema: searchInputSchema
     },
-    async (args) => searchJinaVip(args)
+    async (args) => searchJinaVip(args, apiKey)
   );
 }

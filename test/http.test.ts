@@ -1,14 +1,81 @@
-import { describe, expect, it } from "vitest";
+import { once } from "node:events";
+import type { Server } from "node:http";
+import { Client, StreamableHTTPClientTransport } from "@modelcontextprotocol/client";
+import { describe, expect, it, vi } from "vitest";
 import request from "supertest";
+import { initializeCache } from "../src/cache.js";
 import { createHttpApp, createMcpServer } from "../src/index.js";
 
+const startHttpApp = async (
+  app: ReturnType<typeof createHttpApp>
+): Promise<{ server: Server; url: URL }> => {
+  const server = app.listen(0, "127.0.0.1");
+  await once(server, "listening");
+
+  const address = server.address();
+  if (!address || typeof address === "string") {
+    throw new Error("Expected HTTP server to listen on a TCP port");
+  }
+
+  return {
+    server,
+    url: new URL(`http://127.0.0.1:${address.port}/mcp`)
+  };
+};
+
+const stopHttpServer = async (server: Server): Promise<void> => {
+  await new Promise<void>((resolve, reject) => {
+    server.close((error) => error ? reject(error) : resolve());
+  });
+};
+
+const createTestApp = () => createHttpApp(() => createMcpServer({
+  apiKey: null,
+  searchEndpoint: "standard",
+  tokensPerPage: 1000
+}), {
+  allowedHosts: [],
+  allowedOrigins: [],
+  authToken: ""
+});
+
 describe("HTTP transport", () => {
-  it("accepts JSON-RPC initialize requests at POST /mcp", async () => {
-    const app = createHttpApp(() => createMcpServer({
-      apiKey: null,
-      searchEndpoint: "standard",
-      tokensPerPage: 1000
-    }));
+  it("authenticates before parsing malformed JSON", async () => {
+    const factory = vi.fn();
+    const app = createHttpApp(factory, { authToken: "test-http-token" });
+    const response = await request(app).post("/mcp")
+      .set("Content-Type", "application/json").send('{"sensitive":"unfinished');
+    expect(response.status).toBe(401);
+    expect(response.body.error.message).toBe("Unauthorized");
+    expect(factory).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['{"sensitive":"unfinished', 400, "Invalid request body"],
+    [JSON.stringify({ content: "x".repeat(110000) }), 413, "Request body too large"]
+  ])("sanitizes parser errors without exposing request data or local paths", async (body, status, message) => {
+    const response = await request(createTestApp()).post("/mcp")
+      .set("Content-Type", "application/json").send(body);
+    expect(response.status).toBe(status);
+    expect(response.body).toEqual({
+      jsonrpc: "2.0", error: { code: -32603, message }, id: null
+    });
+    expect(response.headers["x-powered-by"]).toBeUndefined();
+  });
+
+  it.each([
+    ["http://[::1]:3000", 204],
+    ["https://localhost:3000", 204],
+    ["ftp://localhost", 403],
+    ["http://localhost.evil.example", 403],
+    ["null", 403]
+  ])("validates browser origin %s", async (origin, status) => {
+    const response = await request(createTestApp()).options("/mcp").set("Origin", origin);
+    expect(response.status).toBe(status);
+  });
+
+  it("accepts legacy initialize requests at POST /mcp", async () => {
+    const app = createTestApp();
 
     const response = await request(app)
       .post("/mcp")
@@ -18,7 +85,7 @@ describe("HTTP transport", () => {
         id: 1,
         method: "initialize",
         params: {
-          protocolVersion: "DRAFT-2026-v1",
+          protocolVersion: "2025-11-25",
           capabilities: {},
           clientInfo: {
             name: "vitest",
@@ -28,15 +95,92 @@ describe("HTTP transport", () => {
       });
 
     expect(response.status).toBe(200);
-    expect(response.body).toMatchObject({
-      jsonrpc: "2.0",
-      id: 1,
-      result: {
-        serverInfo: {
-          name: "jina-mcp-tools"
+    expect(response.headers["content-type"]).toContain("text/event-stream");
+    expect(response.text).toContain('"protocolVersion":"2025-11-25"');
+    expect(response.text).toContain('"name":"jina-mcp-tools"');
+  });
+
+  it.each([
+    ["legacy", "legacy" as const],
+    ["2026-07-28", "modern" as const]
+  ])("serves tools over the %s protocol era", async (mode, expectedEra) => {
+    initializeCache(10);
+    const app = createTestApp();
+    const { server, url } = await startHttpApp(app);
+    const nativeFetch = globalThis.fetch;
+    const client = new Client(
+      { name: `http-${expectedEra}-test`, version: "1.0.0" },
+      {
+        versionNegotiation: {
+          mode: mode === "legacy" ? "legacy" : { pin: mode }
         }
       }
-    });
+    );
+    const transport = new StreamableHTTPClientTransport(url, { fetch: nativeFetch });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      data: { content: `Reader content over ${expectedEra}` }
+    }), {
+      headers: { "Content-Type": "application/json" }
+    })));
+
+    try {
+      await client.connect(transport, { timeout: 5000 });
+      const tools = await client.listTools(undefined, { timeout: 5000 });
+      const result = await client.callTool({
+        name: "jina_reader",
+        arguments: { url: `https://example.com/${expectedEra}` }
+      }, { timeout: 5000 });
+
+      expect(client.getProtocolEra()).toBe(expectedEra);
+      expect(tools.tools.map((tool) => tool.name)).toContain("jina_reader");
+      expect(result.content).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          type: "text",
+          text: expect.stringContaining(`Reader content over ${expectedEra}`)
+        })
+      ]));
+    } finally {
+      await client.close();
+      await stopHttpServer(server);
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it.each(["standard", "vip", null] as const)("uses explicit credentials for %s instead of the environment", async (endpoint) => {
+    initializeCache(10);
+    vi.stubEnv("JINA_API_KEY", "unrelated-environment-key");
+    const apiKey = endpoint ? "explicit-server-key" : null;
+    const app = createHttpApp(() => createMcpServer({
+      apiKey, searchEndpoint: endpoint ?? "standard", tokensPerPage: 1000
+    }), { authToken: "", allowedHosts: [], allowedOrigins: [] });
+    const { server, url } = await startHttpApp(app);
+    const nativeFetch = globalThis.fetch;
+    const client = new Client({ name: "credential-test", version: "1" });
+    const fetchMock = vi.fn<typeof fetch>().mockImplementation(async () => new Response(JSON.stringify({
+      code: 200, data: { content: "Reader result" }, results: []
+    }), { headers: { "Content-Type": "application/json" } }));
+    vi.stubGlobal("fetch", fetchMock);
+    try {
+      await client.connect(new StreamableHTTPClientTransport(url, { fetch: nativeFetch }));
+      const tools = (await client.listTools()).tools.map(tool => tool.name);
+      expect(tools).toHaveLength(endpoint ? 2 : 1);
+      expect((await client.callTool({ name: "jina_reader", arguments: { url: "https://example.com/credentials" } })).isError).not.toBe(true);
+      if (endpoint) {
+        fetchMock.mockImplementation(async () => new Response(JSON.stringify({ code: 200, data: [], results: [] }), {
+          headers: { "Content-Type": "application/json" }
+        }));
+        expect((await client.callTool({ name: endpoint === "vip" ? "jina_search_vip" : "jina_search", arguments: { query: "test" } })).isError).not.toBe(true);
+      }
+      expect(fetchMock).toHaveBeenCalledTimes(endpoint ? 2 : 1);
+      for (const call of fetchMock.mock.calls) {
+        expect(new Headers(call[1]?.headers).get("Authorization")).toBe(apiKey ? `Bearer ${apiKey}` : null);
+      }
+    } finally {
+      await client.close();
+      await stopHttpServer(server);
+      vi.unstubAllGlobals();
+      vi.unstubAllEnvs();
+    }
   });
 
   it("returns JSON-RPC -32603 for internal errors before headers are sent", async () => {
@@ -55,7 +199,7 @@ describe("HTTP transport", () => {
         code: -32603,
         message: "Internal server error"
       },
-      id: null
+      id: 1
     });
   });
 
@@ -96,6 +240,7 @@ describe("HTTP transport", () => {
     expect(response.headers["access-control-allow-origin"]).toBe("https://client.example");
     expect(response.headers["access-control-allow-methods"]).toContain("POST");
     expect(response.headers["access-control-allow-headers"]).toContain("Authorization");
+    expect(response.headers["access-control-allow-headers"]).toContain("MCP-Protocol-Version");
     expect(response.headers.vary).toContain("Origin");
   });
 
@@ -118,15 +263,20 @@ describe("HTTP transport", () => {
   });
 
   it("reports unsupported HTTP methods on /mcp", async () => {
-    const app = createHttpApp(() => createMcpServer({
-      apiKey: null,
-      searchEndpoint: "standard",
-      tokensPerPage: 1000
-    }));
+    const app = createTestApp();
 
     const response = await request(app).get("/mcp");
 
     expect(response.status).toBe(405);
     expect(response.headers.allow).toBe("POST");
+  });
+
+  it("rejects non-local Host headers on the default loopback bind", async () => {
+    const response = await request(createTestApp())
+      .post("/mcp")
+      .set("Host", "evil.example")
+      .send({ jsonrpc: "2.0", id: 1, method: "ping" });
+
+    expect(response.status).toBe(403);
   });
 });
