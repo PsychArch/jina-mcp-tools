@@ -5,19 +5,17 @@ import {
 } from "../src/utils.js";
 
 describe("handleGitHubUrl", () => {
-  it("converts branch blob URLs to raw URLs", () => {
-    expect(handleGitHubUrl("https://github.com/owner/repo/blob/main/src/index.ts")).toMatchObject({
+  it.each([
+    ["branch", "main/src/index.ts"],
+    ["tag", "v5.0.0/package.json"],
+    ["commit", "0123456789abcdef0123456789abcdef01234567/README.md"],
+    ["slash-containing branch", "feature/foo/src/index.ts"]
+  ])("converts %s blob URLs without assuming a branch ref", (_kind, refAndPath) => {
+    const url = `https://github.com/owner/repo/blob/${refAndPath}`;
+    expect(handleGitHubUrl(url)).toEqual({
       isGitHub: true,
-      convertedUrl: "https://raw.githubusercontent.com/owner/repo/refs/heads/main/src/index.ts",
-      shouldBypassJina: true
-    });
-  });
-
-  it("converts commit blob URLs to raw URLs without refs/heads", () => {
-    const commit = "0123456789abcdef0123456789abcdef01234567";
-    expect(handleGitHubUrl(`https://github.com/owner/repo/blob/${commit}/README.md`)).toMatchObject({
-      isGitHub: true,
-      convertedUrl: `https://raw.githubusercontent.com/owner/repo/${commit}/README.md`,
+      convertedUrl: `https://raw.githubusercontent.com/owner/repo/${refAndPath}`,
+      originalUrl: url,
       shouldBypassJina: true
     });
   });

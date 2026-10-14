@@ -25,7 +25,7 @@ Assertions cover:
 - Standard and VIP search query encoding, site filtering, result limits and formatting.
 - Missing/invalid inputs, numeric bounds, unknown tools, upstream 429 errors,
   and successful requests after errors on the same client connection.
-- Direct markdown, HTML and failed-negotiation fallback, GitHub raw conversion,
+- Direct markdown, HTML and failed-negotiation fallback, GitHub raw conversion for branches, tags, commits, and slash-containing branches,
   and anonymous upstream requests without authorization headers.
 - Authenticated HTTP calls and rejected unauthenticated/disallowed-origin requests.
 
