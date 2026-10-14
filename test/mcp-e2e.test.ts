@@ -184,12 +184,14 @@ describe.each(["stdio", "http"])("compiled MCP E2E: %s", transport => {
         expect(h.requests[0].headers.accept).toBe("text/markdown");
         expect(textOf(await read("https://developers.cloudflare.com/fallback"))).toContain("Hello");
         expect(h.requests.slice(1).map(r => r.url)).toEqual(["https://developers.cloudflare.com/fallback", "https://r.jina.ai/"]);
-        expect(textOf(await read("https://github.com/example/repo/blob/main/README.md"))).toContain("# Direct content");
-        expect(h.requests.at(-1)?.url).toBe("https://raw.githubusercontent.com/example/repo/refs/heads/main/README.md");
+        for (const ref of ["main", "v5.0.0", "0123456789abcdef0123456789abcdef01234567", "feature/foo"]) {
+          expect(textOf(await read(`https://github.com/example/repo/blob/${ref}/README.md`))).toContain("# Direct content");
+          expect(h.requests.at(-1)?.url).toBe(`https://raw.githubusercontent.com/example/repo/${ref}/README.md`);
+        }
         expect(h.requests.every(r => r.headers.authorization === undefined)).toBe(true);
         // Cache size is two: the first URL must have been evicted.
         await read("https://developers.cloudflare.com/direct");
-        expect(h.requests).toHaveLength(5);
+        expect(h.requests).toHaveLength(8);
         const htmlFallback = textOf(await read("https://developers.cloudflare.com/html"));
         expect(htmlFallback).toContain("Hello");
         expect(htmlFallback).not.toContain("<html>");

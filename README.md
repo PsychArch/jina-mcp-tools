@@ -152,7 +152,7 @@ Designed for coding-agent research:
 
 - Automatically paginates large documents instead of returning one oversized response.
 - Keeps an LRU cache so later pages of the same URL are available immediately.
-- Converts GitHub file URLs to raw content URLs.
+- Converts GitHub file URLs for branches, tags, and commits to raw content URLs.
 - Tries direct `Accept: text/markdown` retrieval for a maintained allowlist of documentation and blog hosts, then falls back to `r.jina.ai` if the response fails or is empty.
 
 The default cache holds 50 URLs, and each page is limited to approximately 15,000 tokens. Both values are configurable.

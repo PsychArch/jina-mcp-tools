@@ -50,13 +50,8 @@ export const handleGitHubUrl = (url: string): GitHubUrlResult => {
 
     if (match) {
       const [, owner, repo, ref, path] = match;
-      const isCommitHash = /^[a-f0-9]{40}$/i.test(ref);
-
-      if (isCommitHash) {
-        convertedUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${ref}/${path}`;
-      } else {
-        convertedUrl = `https://raw.githubusercontent.com/${owner}/${repo}/refs/heads/${ref}/${path}`;
-      }
+      // Preserve the supplied ref so branches, tags, and commits all resolve.
+      convertedUrl = `https://raw.githubusercontent.com/${owner}/${repo}/${ref}/${path}`;
     } else {
       convertedUrl = url
         .replace('github.com', 'raw.githubusercontent.com')
