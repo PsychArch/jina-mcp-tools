@@ -31,7 +31,7 @@ importers:
         version: 5.2.1
       zod:
         specifier: ^4.4.3
-        version: 4.4.3
+        version: 4.6.6
     devDependencies:
       '@modelcontextprotocol/client':
         specifier: ^2.0.0
@@ -1143,8 +1143,8 @@ packages:
   wrappy@1.0.2:
     resolution: {integrity: sha512-l4Sp/DRseor9wL6EvV2+TuQn63dMkPjZ/sp9XkghTEbV9KlPS1xUsZ3u7/IQO4wxtcFB4bgpQPRcR3QCvezPcQ==}
 
-  zod@4.4.3:
-    resolution: {integrity: sha512-ytENFjIJFl2UwYglde2jchW2Hwm4GJFLDiSXWdTrJQBIN9Fcyp7n4DhxJEiWNAJMV1/BqWfW/kkg71UDcHJyTQ==}
+  zod@4.6.6:
+    resolution: {integrity: sha512-4UmzQUF5fxvfcYHlbjBmejU+w+hbDnWFx4aS8kBx7nPBHcO2SqPbpAG8snbdg+Xse4pRefR98hgjFgIMCI/UhA==}
 
 snapshots:
 
@@ -1258,11 +1258,11 @@ snapshots:
       eventsource-parser: 3.1.1
       jose: 6.2.13
       pkce-challenge: 5.0.1
-      zod: 4.4.3
+      zod: 4.6.6
 
   '@modelcontextprotocol/core@2.3.0':
     dependencies:
-      zod: 4.4.3
+      zod: 4.6.6
 
   '@modelcontextprotocol/express@2.0.2(@modelcontextprotocol/server@2.3.0)(express@5.2.1)':
     dependencies:
@@ -1280,7 +1280,7 @@ snapshots:
   '@modelcontextprotocol/server@2.3.0':
     dependencies:
       '@modelcontextprotocol/core': 2.3.0
-      zod: 4.4.3
+      zod: 4.6.6
 
   '@napi-rs/wasm-runtime@1.2.6(@emnapi/core@1.11.1)(@emnapi/runtime@1.11.1)':
     dependencies:
@@ -2111,4 +2111,4 @@ snapshots:
 
   wrappy@1.0.2: {}
 
-  zod@4.4.3: {}
+  zod@4.6.6: {}
